@@ -104,7 +104,7 @@ fn run(cli: Cli, started: Instant) -> anyhow::Result<ExitCode> {
         if cli.stats || cli.quit {
             flair_platform::console::attach_parent();
             let i18n = I18n::new(ui_lang(&paths));
-            eprintln!("{}", i18n.t("not-running"));
+            flair_platform::console::eprintln(&i18n.t("not-running"));
             return Ok(ExitCode::FAILURE);
         }
     }
@@ -228,7 +228,7 @@ fn client_output(command: Command, reply: &str, paths: &Paths) -> ExitCode {
     let i18n = I18n::new(ui_lang(paths));
     match serde_json::from_str::<stats::Snapshot>(reply) {
         Ok(snapshot) => {
-            println!("{}", i18n.t("stats-title"));
+            flair_platform::console::println(&i18n.t("stats-title"));
             let lines = stats::lines(&snapshot, &i18n);
             let width = lines
                 .iter()
@@ -237,12 +237,12 @@ fn client_output(command: Command, reply: &str, paths: &Paths) -> ExitCode {
                 .unwrap_or(0);
             for (label, value) in lines {
                 let pad = width - label.chars().count();
-                println!("  {label}{:pad$}  {value}", "");
+                flair_platform::console::println(&format!("  {label}{:pad$}  {value}", ""));
             }
             ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("flair: {reply} ({e})");
+            flair_platform::console::eprintln(&format!("flair: {reply} ({e})"));
             ExitCode::FAILURE
         }
     }
