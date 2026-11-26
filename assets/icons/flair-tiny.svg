@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+  <!-- Flair logo, simplified for 16 px: a single ring and the small circle
+       (three circles blend together at this size). -->
+  <defs>
+    <mask id="flair-tiny-cut" maskUnits="userSpaceOnUse" x="0" y="0" width="16" height="16">
+      <rect width="16" height="16" fill="#fff" stroke="none"/>
+      <circle cx="4.25" cy="4.25" r="4" fill="#000" stroke="none"/>
+    </mask>
+  </defs>
+  <circle cx="9.5" cy="9.5" r="5.25" mask="url(#flair-tiny-cut)"/>
+  <circle cx="4.25" cy="4.25" r="2.5"/>
+</svg>

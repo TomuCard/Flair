@@ -1,0 +1,11 @@
+# Same line endings on every platform: tests compare generated text with
+# files of the repository (README settings table), and the Windows runners
+# would otherwise check text files out with CRLF.
+* text=auto eol=lf
+
+# Binary assets: never touched.
+*.png binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.flair binary
