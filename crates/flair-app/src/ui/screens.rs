@@ -424,6 +424,10 @@ impl Flair {
     }
 
     fn start_update_check(&mut self) -> Task<Message> {
+        // Say it at once rather than offering an update that cannot be installed.
+        if let Some(blocker) = self.update_blocker() {
+            return self.say(self.i18n.t(blocker));
+        }
         let channel = self.config.update.channel;
         let task = background(
             move || {
