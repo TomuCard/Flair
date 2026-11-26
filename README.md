@@ -159,7 +159,6 @@ Réglages (table générée depuis le registre, `UPDATE_README=1 cargo test -p f
 | `theme.icons` | `"color"` | Icônes d'applications en couleur ou monochromes (color \| mono) |
 | `theme.font` | `"inter"` | inter, system, ou le nom d'une police installée |
 | `theme.tray_icon` | `"auto"` | Couleur de l'icône : suit la barre des tâches, ou couleur d'accent (auto \| accent) |
-| `theme.animations` | `true` | Fondu à l'apparition de la fenêtre |
 | `files.enabled` | `true` | Indexer et rechercher les fichiers |
 | `files.roots` | `["~"]` | Dossiers racines de l'index de fichiers |
 | `files.exclude` | `["node_modules", ".git", "target", ".cache", "__pycache__"]` | Noms de dossiers ou motifs ignorés par l'index |

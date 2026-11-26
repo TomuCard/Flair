@@ -16,6 +16,12 @@ pub fn cursor_work_area() -> Option<WorkArea> {
     imp::cursor_work_area()
 }
 
+/// Disables the OS animations when the window appears and disappears
+/// (`DWMWA_TRANSITIONS_FORCEDISABLED` on Windows). `raw` is the native handle.
+pub fn disable_animations(raw: u64) {
+    imp::disable_animations(raw);
+}
+
 /// Allows any process to take the foreground (called by a `flair --toggle`
 /// client before asking the running instance to show its window).
 pub fn allow_foreground() {
@@ -62,6 +68,27 @@ mod imp {
         })
     }
 
+    pub fn disable_animations(raw: u64) {
+        use windows::Win32::Foundation::{HWND, TRUE};
+        use windows::Win32::Graphics::Dwm::{
+            DWMWA_TRANSITIONS_FORCEDISABLED, DwmSetWindowAttribute,
+        };
+        let disabled = TRUE;
+        // SAFETY: `raw` is the HWND of our own live window (from Iced); the
+        // attribute value points to a BOOL of the announced size.
+        let result = unsafe {
+            DwmSetWindowAttribute(
+                HWND(raw as *mut core::ffi::c_void),
+                DWMWA_TRANSITIONS_FORCEDISABLED,
+                (&raw const disabled).cast(),
+                std::mem::size_of_val(&disabled) as u32,
+            )
+        };
+        if let Err(e) = result {
+            tracing::warn!("cannot disable window animations: {e}");
+        }
+    }
+
     pub fn allow_foreground() {
         // SAFETY: no pointer arguments; failure is harmless (logged nowhere).
         let _ = unsafe { AllowSetForegroundWindow(ASFW_ANY) };
@@ -77,4 +104,7 @@ mod imp {
     }
 
     pub fn allow_foreground() {}
+
+    /// Compositor animations cannot be controlled from a Linux client.
+    pub fn disable_animations(_raw: u64) {}
 }

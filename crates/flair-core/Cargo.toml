@@ -8,6 +8,11 @@ repository.workspace = true
 
 [dependencies]
 fluent-bundle.workspace = true
+minisign-verify.workspace = true
+semver.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+zip.workspace = true
 palette.workspace = true
 serde.workspace = true
 sys-locale.workspace = true
@@ -18,6 +23,7 @@ tracing.workspace = true
 unic-langid.workspace = true
 
 [dev-dependencies]
+minisign = "0.10.0"
 fluent-syntax = "0.12"
 proptest.workspace = true
 

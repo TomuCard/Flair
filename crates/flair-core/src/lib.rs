@@ -7,12 +7,15 @@
 //! - [`theme`]: 3 colors → full set of contrast-checked UI tokens;
 //! - [`i18n`]: user interface translations (Fluent).
 
+pub mod archive;
 pub mod i18n;
 pub mod provider;
 pub mod query;
 pub mod result;
 pub mod settings;
 pub mod theme;
+pub mod time;
+pub mod update;
 
 pub use provider::{CancellationToken, Provider};
 pub use query::Query;

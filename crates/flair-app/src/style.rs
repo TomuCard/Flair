@@ -25,20 +25,18 @@ fn color(c: theme::Color, alpha: f32) -> Color {
 }
 
 impl Palette {
-    /// `opacity` applies to the background (setting `theme.opacity`); `fade`
-    /// to everything (fade-in animation, 1.0 when finished).
-    pub fn new(tokens: &Tokens, opacity: f32, fade: f32) -> Self {
-        let fade = fade.clamp(0.0, 1.0);
-        let bg_alpha = opacity.clamp(0.0, 1.0) * fade;
+    /// `opacity` applies to the background (setting `theme.opacity`).
+    pub fn new(tokens: &Tokens, opacity: f32) -> Self {
+        let bg_alpha = opacity.clamp(0.0, 1.0);
         Self {
             background: color(tokens.background, bg_alpha),
-            text: color(tokens.text, fade),
-            text_secondary: color(tokens.text_secondary, fade),
-            text_muted: color(tokens.text_muted, fade),
+            text: color(tokens.text, 1.0),
+            text_secondary: color(tokens.text_secondary, 1.0),
+            text_muted: color(tokens.text_muted, 1.0),
             hover: color(tokens.hover, bg_alpha),
             selection: color(tokens.selection, bg_alpha),
-            border: color(tokens.border, fade),
-            accent: color(tokens.accent, fade),
+            border: color(tokens.border, 1.0),
+            accent: color(tokens.accent, 1.0),
         }
     }
 

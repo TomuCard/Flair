@@ -8,7 +8,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Current version of the configuration format (see migrations, spec section 11).
-pub const CONFIG_VERSION: u32 = 1;
+pub const CONFIG_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -166,7 +166,6 @@ pub struct ThemeConfig {
     pub icons: IconStyle,
     pub font: String,
     pub tray_icon: TrayIconStyle,
-    pub animations: bool,
 }
 
 impl Default for ThemeConfig {
@@ -179,7 +178,6 @@ impl Default for ThemeConfig {
             icons: IconStyle::Color,
             font: "inter".into(),
             tray_icon: TrayIconStyle::Auto,
-            animations: true,
         }
     }
 }

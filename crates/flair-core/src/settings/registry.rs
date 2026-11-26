@@ -347,10 +347,6 @@ pub static REGISTRY: &[SettingDescriptor] = &[
         ("Icône de notification", "Tray icon"),
         ("Couleur de l'icône : suit la barre des tâches, ou couleur d'accent", "Icon color: follows the taskbar, or accent color"),
         fr: ["icône notification"], en: ["tray"]),
-    setting!("theme.animations", SettingKind::Bool,
-        ("Animations", "Animations"),
-        ("Fondu à l'apparition de la fenêtre", "Fade-in when the window appears"),
-        fr: ["animations"], en: ["animations"]),
     // [files]
     setting!("files.enabled", SettingKind::Bool,
         ("Recherche de fichiers", "File search"),

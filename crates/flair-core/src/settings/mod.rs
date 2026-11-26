@@ -5,6 +5,7 @@ pub mod config;
 pub mod edit;
 pub mod generate;
 pub mod hotkey;
+pub mod migrate;
 pub mod registry;
 
 use std::path::Path;

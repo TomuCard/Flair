@@ -49,9 +49,6 @@ pub const SCROLLBAR_WIDTH: f32 = 4.0;
 /// Visible rows before scrolling.
 pub const MAX_VISIBLE_ROWS: usize = 8;
 
-/// Fade-in duration; never delays the window (purely decorative).
-pub const FADE_IN_MS: u64 = 80;
-
 /// Vertical position of the window: fraction of the screen height.
 pub const WINDOW_TOP_FRACTION: f32 = 0.25;
 

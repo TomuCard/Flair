@@ -48,7 +48,6 @@ pub struct Flair {
     i18n: Arc<I18n>,
     tokens: Tokens,
     opacity: f32,
-    animations: bool,
     provider: Arc<dyn Provider>,
 
     input: String,
@@ -67,8 +66,6 @@ pub struct Flair {
     cancel: CancellationToken,
     /// Vertical scroll offset of the list and height of its viewport.
     scroll_offset: f32,
-    /// Fade-in start; `None` once finished or when animations are off.
-    fade_started: Option<Instant>,
     was_focused: bool,
     started: Instant,
     dev: Dev,
@@ -77,6 +74,8 @@ pub struct Flair {
 #[derive(Debug, Clone)]
 pub enum Message {
     WindowOpened(window::Id),
+    /// Native handle of a new window (HWND on Windows), once known.
+    WindowReady(window::Id, u64),
     InputChanged(String),
     Results(u64, Vec<ResultItem>),
     Key(Key, Physical, Modifiers),
@@ -134,7 +133,6 @@ impl Flair {
         notices.extend(hotkey_notice(&init, services.hotkey_error.as_ref()));
         // Problems must be seen: show the window if there are any.
         let start_visible = init.start_visible || !notices.is_empty();
-        let animations = init.config.theme.animations;
         let mut state = Self {
             window: None,
             visible: false,
@@ -144,7 +142,6 @@ impl Flair {
             tokens: init.tokens,
             #[allow(clippy::cast_possible_truncation)]
             opacity: init.config.theme.opacity as f32,
-            animations,
             config: init.config,
             provider: init.provider,
             input: String::new(),
@@ -158,7 +155,6 @@ impl Flair {
             query_seq: 0,
             cancel: CancellationToken::new(),
             scroll_offset: 0.0,
-            fade_started: None,
             was_focused: false,
             started: init.started,
             dev: init.dev,
@@ -167,7 +163,7 @@ impl Flair {
             state.show()
         } else if crate::platform_window::can_hide() {
             // Create the window hidden now, so showing it later is instant.
-            state.open_window(false)
+            state.open_window()
         } else {
             Task::none()
         };
@@ -201,31 +197,34 @@ impl Flair {
         }
     }
 
-    fn fade(&self) -> f32 {
-        match self.fade_started {
-            #[allow(clippy::cast_precision_loss)]
-            Some(start) => {
-                (start.elapsed().as_millis() as f32 / design::FADE_IN_MS as f32).min(1.0)
-            }
-            None => 1.0,
-        }
-    }
-
     pub fn palette(&self) -> Palette {
-        Palette::new(&self.tokens, self.opacity, self.fade())
+        Palette::new(&self.tokens, self.opacity)
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
+            // Windows are always created hidden: first disable the OS open and
+            // close animations, then show the window if it is wanted.
             Message::WindowOpened(id) => {
+                if self.window != Some(id) {
+                    return Task::none();
+                }
+                window::raw_id::<Message>(id).map(move |raw| Message::WindowReady(id, raw))
+            }
+            Message::WindowReady(id, raw) => {
+                flair_platform::window::disable_animations(raw);
                 if !self.visible || self.window != Some(id) {
-                    return Task::none(); // window created hidden, kept warm
+                    return Task::none(); // kept hidden and warm
                 }
                 tracing::info!(
                     since_start_ms = self.started.elapsed().as_millis(),
                     "window opened"
                 );
-                let mut tasks = vec![window::gain_focus(id), operation::focus(Id::new(INPUT_ID))];
+                let mut tasks = vec![
+                    window::set_mode(id, window::Mode::Windowed),
+                    window::gain_focus(id),
+                    operation::focus(Id::new(INPUT_ID)),
+                ];
                 if let Some(query) = self.dev.query.clone() {
                     tasks.push(self.search(query));
                 } else if self.dev.screenshot.is_some() {
@@ -297,9 +296,6 @@ impl Flair {
                     let elapsed = requested.elapsed();
                     crate::stats::record_show(elapsed);
                     tracing::debug!(ms = elapsed.as_secs_f64() * 1000.0, "shown");
-                }
-                if self.fade() >= 1.0 {
-                    self.fade_started = None;
                 }
                 Task::none()
             }
@@ -389,9 +385,6 @@ impl Flair {
         crate::stats::set_visible(true);
         self.show_requested = Some(Instant::now());
         self.was_focused = false;
-        if self.animations {
-            self.fade_started = Some(Instant::now());
-        }
         let keep = self.config.keep_last_query && !self.input.is_empty();
         if !keep {
             self.input.clear();
@@ -400,7 +393,7 @@ impl Flair {
         }
 
         let Some(id) = self.window else {
-            return self.open_window(true);
+            return self.open_window();
         };
         let mut tasks = Vec::new();
         if let Some(position) = position_under_mouse() {
@@ -416,13 +409,13 @@ impl Flair {
         Task::batch(tasks)
     }
 
-    fn open_window(&mut self, visible: bool) -> Task<Message> {
+    fn open_window(&mut self) -> Task<Message> {
         let height = if crate::platform_window::can_resize() {
             self.frame_height()
         } else {
             design::max_window_height()
         };
-        let (id, open) = window::open(window_settings(height, visible));
+        let (id, open) = window::open(window_settings(height));
         self.window = Some(id);
         open.map(Message::WindowOpened)
     }
@@ -433,9 +426,9 @@ impl Flair {
             event::listen_with(on_event),
             external::subscription().map(Message::External),
         ];
-        // Frames are only requested during the fade-in and right after a show
-        // (to measure it), never at rest.
-        if self.fade_started.is_some() || self.show_requested.is_some() {
+        // A frame is only requested right after a show (to measure it), never
+        // at rest.
+        if self.show_requested.is_some() {
             subscriptions.push(window::frames().map(|_| Message::Frame));
         }
         // Development screenshots wait for the next frame, so the view is up to date.
@@ -606,7 +599,6 @@ impl Flair {
         crate::stats::set_visible(false);
         self.cancel.cancel();
         self.show_requested = None;
-        self.fade_started = None;
         self.info_rows.clear();
         self.hovered = None;
         self.ctrl_held = false;
@@ -810,7 +802,7 @@ fn stats_rows(i18n: &I18n, snapshot: &crate::stats::Snapshot) -> Vec<ResultItem>
         .collect()
 }
 
-fn window_settings(height: f32, visible: bool) -> window::Settings {
+fn window_settings(height: f32) -> window::Settings {
     window::Settings {
         size: Size::new(design::WINDOW_WIDTH, height),
         // Centered horizontally, at 25 % of the height of the primary screen.
@@ -821,7 +813,8 @@ fn window_settings(height: f32, visible: bool) -> window::Settings {
                 monitor.height * design::WINDOW_TOP_FRACTION,
             )
         }),
-        visible,
+        // Shown once the OS animations are disabled (see `WindowReady`).
+        visible: false,
         resizable: crate::platform_window::RESIZABLE,
         minimizable: false,
         decorations: false,

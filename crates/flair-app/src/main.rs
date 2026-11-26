@@ -120,7 +120,7 @@ fn run(cli: Cli, started: Instant) -> anyhow::Result<ExitCode> {
     // (and thus `ui_language`) does not exist yet.
     let system_lang = Lang::resolve(UiLanguageSetting::System);
     let loaded = settings::load_or_create(&paths.config_file(), system_lang);
-    let mut config = loaded.config;
+    let config = loaded.config;
 
     // Must happen before any other thread is started (logging spawns one).
     renderer::select(match config.resources.renderer {
@@ -166,9 +166,6 @@ fn run(cli: Cli, started: Instant) -> anyhow::Result<ExitCode> {
         Arc::clone(&i18n),
         config.max_results as usize,
     ));
-    if dev {
-        config.theme.animations = false; // capture the final look, not the fade
-    }
     let init = ui::Init {
         dev: ui::Dev {
             query: cli.dev_query,
