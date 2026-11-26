@@ -3,7 +3,7 @@
 
 use flair_core::theme::{self, Tokens};
 use iced::widget::{container, scrollable, svg, text_input};
-use iced::{Background, Border, Color, Shadow, Theme, Vector, border};
+use iced::{Background, Border, Color, Shadow, Theme, border};
 
 use crate::design;
 
@@ -57,7 +57,12 @@ impl Palette {
         )
     }
 
-    /// Main window frame: background, 1 px border, rounded corners, shadow.
+    /// Main window frame: background, 1 px border, rounded corners.
+    ///
+    /// No shadow drawn by Flair: Iced's software renderer only redraws the
+    /// bounds of a quad, not its shadow, so a shadow outside the frame was
+    /// painted again and again over itself until it turned black. The shadow
+    /// comes from the OS where available (DWM on Windows).
     pub fn window(self) -> container::Style {
         container::Style {
             background: Some(Background::Color(self.background)),
@@ -66,11 +71,7 @@ impl Palette {
                 width: design::BORDER_WIDTH,
                 radius: design::WINDOW_RADIUS.into(),
             },
-            shadow: Shadow {
-                color: Color::from_rgba(0.0, 0.0, 0.0, design::SHADOW_OPACITY),
-                offset: Vector::new(0.0, design::SHADOW_OFFSET_Y),
-                blur_radius: design::SHADOW_BLUR,
-            },
+            shadow: Shadow::default(),
             text_color: Some(self.text),
             snap: true,
         }

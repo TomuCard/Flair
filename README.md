@@ -34,7 +34,7 @@ Dépendances d'exécution sous Linux (déjà présentes sur un bureau) : `libxkb
 
 **Sous WSL2 (WSLg)** :
 - WSLg est une session Wayland : le raccourci global n'y existe pas. Utiliser `flair --toggle` (ou `--show`) depuis un terminal ;
-- WSLg n'expose pas de pilote Vulkan matériel, et `wgpu` y reste bloqué à la création de la surface. Avec `renderer = "auto"`, Flair détecte WSL et choisit le rendu logiciel (`tiny-skia`) : la fenêtre s'affiche en ~75 ms (build debug) ;
+- WSLg n'expose pas de pilote Vulkan matériel : `renderer = "gpu"` (wgpu) y reste bloqué à la création de la surface. Le rendu logiciel (choix par défaut, voir « Moteur de rendu ») fonctionne ;
 - si la fenêtre ne s'ouvre pas (« NoCompositor »), lancer avec `XDG_RUNTIME_DIR=/mnt/wslg/runtime-dir`.
 
 ### Windows, compilé depuis WSL
@@ -134,6 +134,17 @@ Un `.flair` est une archive ZIP de fichiers texte : `manifest.json`, `config.tom
 Un `.flair` n'est pas fiable par défaut : seuls les chemins attendus sont lus, un chemin absolu ou avec `..` fait refuser toute l'archive, la taille est limitée (10 Mo par fichier, 50 Mo au total une fois décompressé), chaque fichier est validé comme s'il était écrit à la main, et **rien n'est écrit avant que toute l'archive soit lue et vérifiée**. Un fichier d'une version plus récente est refusé ; un fichier plus ancien passe par les migrations.
 
 Sauvegardes automatiques (avant une mise à jour, un import, une migration ou une réinitialisation) : même format, dans `backups/` du dossier de données, 10 conservées.
+
+## Moteur de rendu
+
+`resources.renderer = "auto" | "gpu" | "cpu"`. **`auto` choisit le rendu logiciel** (`tiny-skia`), d'après les mesures :
+
+| Mesure (fenêtre cachée) | GPU (`wgpu`, Direct3D / Vulkan) | Logiciel (`tiny-skia`) |
+|---|---|---|
+| Windows 11, mémoire | 243 Mo | 31 Mo |
+| WSLg, mémoire | — (bloqué, pas de GPU utilisable) | 24 Mo |
+
+Pour une barre de 680 px de large, le rendu logiciel est largement assez rapide et n'occupe ni contexte GPU ni mémoire vidéo. `renderer = "gpu"` reste disponible (`appliqué au prochain démarrage`).
 
 ## Sobriété : mesures
 
@@ -251,7 +262,7 @@ Réglages (table générée depuis le registre, `UPDATE_README=1 cargo test -p f
 - **Wayland, masquage** : winit ne sait pas cacher une fenêtre sous Wayland. Flair la ferme et en ouvre une nouvelle à l'affichage suivant (12 à 15 ms mesurés). Sans portail XDG (WSLg), le premier affichage attend 100 ms un portail qui ne répond pas (`sctk_adwaita`, imposé par Iced).
 - **Fenêtre Linux** : elle apparaît dans la barre des tâches sous Linux (Iced n'expose pas cet attribut) ; layer-shell (jalon 8) réglera ça sur KDE et wlroots.
 - **Wayland, hauteur de la fenêtre** : winit applique un redimensionnement demandé par l'application sans envoyer d'événement `Resized`, et Iced ne refait alors pas sa mise en page. Sous Wayland, la fenêtre transparente garde donc sa hauteur maximale et seul le cadre visible change de taille. Sous Windows et X11, la fenêtre est redimensionnée normalement.
-- **Ombre** : sous Windows, l'ombre et les coins arrondis sont ceux de DWM (`undecorated_shadow`). Sous Linux, l'ombre est dessinée dans la partie transparente de la fenêtre, donc seulement sous Wayland pour l'instant.
+- **Ombre** : seulement celle du système (DWM sous Windows, avec les coins arrondis). Flair ne dessine pas d'ombre lui-même : le rendu logiciel d'Iced ne redessine que le contour d'un rectangle, pas son ombre, qui se repeignait sur elle-même jusqu'à devenir noire.
 - **Curseur du champ** : Iced 0.14 dessine le curseur avec la couleur du texte. La spec le veut en couleur d'accent, ce qui demande un petit widget dédié (à faire).
 - **Recherche factice** : la correspondance floue du jalon 1 est volontairement simple. `nucleo-matcher` et la frecency arrivent au jalon 4.
 

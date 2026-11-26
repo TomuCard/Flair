@@ -672,8 +672,17 @@ impl Flair {
         let Some(item) = self.rows().get(self.selected) else {
             return Task::none();
         };
-        let text = match item.provider {
-            ProviderKind::File => item.copy_text(),
+        let text = match (item.provider, item.primary_action()) {
+            (ProviderKind::File, _) => item.copy_text(),
+            // Commands keep their `>` prefix: `> ver` + Tab gives `> version`.
+            (_, Some(Action::Internal { command })) => {
+                match crate::commands::completion(command, self.i18n.lang()) {
+                    Some(text) => text,
+                    None => return Task::none(),
+                }
+            }
+            // Information rows (notices, statistics) cannot be completed.
+            (ProviderKind::Command, None) => return Task::none(),
             _ => item.title.clone(),
         };
         Task::batch([
@@ -1117,6 +1126,20 @@ mod tests {
             app.input.starts_with("~/Documents/archives"),
             "{}",
             app.input
+        );
+    }
+
+    #[test]
+    fn tab_on_a_command_keeps_the_prefix() {
+        let mut app = app();
+        let _ = app.update(Message::InputChanged("> ver".into()));
+        assert_eq!(app.results.len(), 1);
+        named(&mut app, Named::Tab, Code::Tab);
+        assert_eq!(app.input, "> version");
+        // Still a command search: the same command is listed.
+        assert_eq!(app.results.len(), 1);
+        assert!(
+            matches!(&app.results[0].actions[0], Action::Internal { command } if command == "version")
         );
     }
 

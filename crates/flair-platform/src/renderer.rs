@@ -6,7 +6,9 @@
 /// Renderer requested by the configuration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Renderer {
-    /// Iced's default order: GPU (wgpu), then software if the GPU fails.
+    /// Best compromise, from measurements: software rendering. With the
+    /// window hidden, Windows measured 243 MB with wgpu (Direct3D) against
+    /// 31 MB with tiny-skia; WSLg has no usable GPU at all.
     Auto,
     /// GPU only (wgpu).
     Gpu,
@@ -21,11 +23,8 @@ pub fn select(renderer: Renderer) {
         return;
     }
     let value = match renderer {
-        // WSLg exposes no hardware Vulkan driver: wgpu hangs while creating
-        // its surface (measured: no frame after 30 s), software rendering
-        // shows the window in ~80 ms.
-        Renderer::Auto if is_wsl() => "tiny-skia",
-        Renderer::Auto => return,
+        // See `Renderer::Auto` for the measurements.
+        Renderer::Auto => "tiny-skia",
         Renderer::Gpu => "wgpu",
         Renderer::Cpu => "tiny-skia",
     };
@@ -44,5 +43,5 @@ pub fn is_wsl() -> bool {
 
 /// Name of the renderer actually requested, for `flair --stats`.
 pub fn active_name() -> String {
-    std::env::var("ICED_BACKEND").unwrap_or_else(|_| "auto (wgpu, tiny-skia)".into())
+    std::env::var("ICED_BACKEND").unwrap_or_else(|_| "wgpu".into())
 }

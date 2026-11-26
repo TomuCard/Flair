@@ -10,12 +10,6 @@ pub const ROW_RADIUS: f32 = 8.0;
 /// Window border width (`border` token).
 pub const BORDER_WIDTH: f32 = 1.0;
 
-/// Shadow: black at this opacity, blur and vertical offset. Drawn by the OS
-/// compositor when available (DWM on Windows), see README.
-pub const SHADOW_OPACITY: f32 = 0.25;
-pub const SHADOW_BLUR: f32 = 24.0;
-pub const SHADOW_OFFSET_Y: f32 = 8.0;
-
 /// Search field.
 pub const INPUT_HEIGHT: f32 = 56.0;
 pub const INPUT_TEXT_SIZE: f32 = 20.0;
@@ -118,8 +112,6 @@ mod tests {
             ROW_GAP,
             ICON_SIZE,
             SCROLLBAR_WIDTH,
-            SHADOW_BLUR,
-            SHADOW_OFFSET_Y,
         ] {
             assert_eq!(v % 4.0, 0.0, "{v} is not on the 4 px grid");
         }

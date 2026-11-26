@@ -12,6 +12,8 @@ use flair_core::{Action, IconSource, ProviderKind, ResultItem};
 /// One command: the id run by `Enter`, its words, and its texts.
 struct Entry {
     id: &'static str,
+    /// What `Tab` writes after `>`, in each interface language.
+    completion: (&'static str, &'static str),
     title: &'static str,
     description: Option<&'static str>,
     /// Words typed after `>`, French and English (accents optional).
@@ -23,6 +25,7 @@ struct Entry {
 const CATALOG: &[Entry] = &[
     Entry {
         id: "update",
+        completion: ("mise à jour", "update"),
         title: "cmd-update",
         description: Some("cmd-update-desc"),
         words: &["mise à jour", "maj", "mettre à jour", "update"],
@@ -30,6 +33,7 @@ const CATALOG: &[Entry] = &[
     },
     Entry {
         id: "update:rollback",
+        completion: ("mise à jour annuler", "update rollback"),
         title: "cmd-update-rollback",
         description: Some("cmd-update-rollback-desc"),
         words: &["mise à jour annuler", "update rollback", "rollback"],
@@ -37,6 +41,7 @@ const CATALOG: &[Entry] = &[
     },
     Entry {
         id: "version",
+        completion: ("version", "version"),
         title: "cmd-version",
         description: None,
         words: &["version"],
@@ -44,6 +49,7 @@ const CATALOG: &[Entry] = &[
     },
     Entry {
         id: "export",
+        completion: ("exporter", "export"),
         title: "cmd-export",
         description: Some("cmd-export-desc"),
         words: &["exporter", "export"],
@@ -51,6 +57,7 @@ const CATALOG: &[Entry] = &[
     },
     Entry {
         id: "import",
+        completion: ("importer", "import"),
         title: "cmd-import",
         description: Some("cmd-import-desc"),
         words: &["importer", "import"],
@@ -58,6 +65,7 @@ const CATALOG: &[Entry] = &[
     },
     Entry {
         id: "undo",
+        completion: ("annuler", "undo"),
         title: "cmd-undo",
         description: Some("cmd-undo-desc"),
         words: &["annuler", "undo"],
@@ -65,6 +73,7 @@ const CATALOG: &[Entry] = &[
     },
     Entry {
         id: "install",
+        completion: ("installer", "install"),
         title: "cmd-install",
         description: None,
         words: &["installer", "install"],
@@ -72,6 +81,7 @@ const CATALOG: &[Entry] = &[
     },
     Entry {
         id: "uninstall",
+        completion: ("désinstaller", "uninstall"),
         title: "cmd-uninstall",
         description: Some("cmd-uninstall-desc"),
         words: &["désinstaller", "uninstall"],
@@ -79,12 +89,29 @@ const CATALOG: &[Entry] = &[
     },
     Entry {
         id: "quit",
+        completion: ("quitter", "quit"),
         title: "cmd-quit",
         description: None,
         words: &["quitter", "quit"],
         portable_only: false,
     },
 ];
+
+/// Text written by `Tab` for a command row: `> version`, `> mise à jour`…
+pub fn completion(command_id: &str, lang: flair_core::i18n::Lang) -> Option<String> {
+    if let Some(channel) = command_id.strip_prefix("update:channel:") {
+        return Some(match lang {
+            flair_core::i18n::Lang::Fr => format!("> mise à jour canal {channel}"),
+            flair_core::i18n::Lang::En => format!("> update channel {channel}"),
+        });
+    }
+    let entry = CATALOG.iter().find(|e| e.id == command_id)?;
+    let word = match lang {
+        flair_core::i18n::Lang::Fr => entry.completion.0,
+        flair_core::i18n::Lang::En => entry.completion.1,
+    };
+    Some(format!("> {word}"))
+}
 
 /// Lowercase, accents removed, single spaces: `Mise à  JOUR` → `mise a jour`.
 pub fn normalize(text: &str) -> String {
@@ -239,6 +266,32 @@ mod tests {
         assert_eq!(ids("désinst", false), ["uninstall"]);
         assert_eq!(ids("desinst", false), ["uninstall"]);
         assert!(ids("zzz", false).is_empty());
+    }
+
+    #[test]
+    fn tab_completion_keeps_the_prefix() {
+        assert_eq!(
+            completion("version", Lang::Fr).as_deref(),
+            Some("> version")
+        );
+        assert_eq!(
+            completion("update", Lang::Fr).as_deref(),
+            Some("> mise à jour")
+        );
+        assert_eq!(completion("update", Lang::En).as_deref(), Some("> update"));
+        assert_eq!(
+            completion("update:channel:stable", Lang::En).as_deref(),
+            Some("> update channel stable")
+        );
+        assert_eq!(completion("nope", Lang::En), None);
+        // Completing then searching again finds the same command.
+        for entry in CATALOG {
+            for lang in [Lang::Fr, Lang::En] {
+                let text = completion(entry.id, lang).expect("completion");
+                let found = ids(text.trim_start_matches('>'), true);
+                assert!(found.contains(&entry.id.to_owned()), "{text} -> {found:?}");
+            }
+        }
     }
 
     #[test]
