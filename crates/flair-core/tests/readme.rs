@@ -11,7 +11,10 @@ const END: &str = "<!-- settings:end -->";
 #[test]
 fn readme_settings_table_is_up_to_date() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../README.md");
-    let readme = std::fs::read_to_string(&path).expect("README.md is readable");
+    // Line endings may be CRLF on a Windows checkout: compare text only.
+    let readme = std::fs::read_to_string(&path)
+        .expect("README.md is readable")
+        .replace("\r\n", "\n");
     let (Some(start), Some(end)) = (readme.find(START), readme.find(END)) else {
         panic!("README.md must contain {START} and {END}");
     };
