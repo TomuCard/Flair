@@ -152,11 +152,11 @@ jobs:
         run: |
           previous=$(gh release list --limit 1 --json tagName --jq '.[0].tagName // empty' || true)
           if [ -n "$previous" ] && git rev-parse -q --verify "refs/tags/$previous" >/dev/null; then
-            range="$previous..HEAD"
+            git log --no-merges --format='%s' "$previous..HEAD" | head -n 30 > notes.txt || true
           else
-            range="HEAD~20..HEAD"
+            # First release: the latest commits (the history may be shorter than 30).
+            git log --no-merges --format='%s' -n 30 > notes.txt || true
           fi
-          git log --no-merges --format='%s' "$range" 2>/dev/null | head -n 30 > notes.txt || true
           [ -s notes.txt ] || echo "Flair $VERSION" > notes.txt
           cat notes.txt
 
