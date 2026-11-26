@@ -132,13 +132,71 @@ Les saisies mélangées doivent aussi marcher : `now + 3 jours`, `4 Go at 100 Mb
 
 ---
 
-## 3. Contraintes de performance (non négociables)
+## 3. Performances et sobriété en ressources (non négociables)
 
+### Réactivité
 - **Affichage de la fenêtre en moins de 50 ms** après le raccourci. L'app tourne en permanence en arrière-plan : on cache et réaffiche la fenêtre, on ne relance jamais le processus.
 - **Résultats en moins de 16 ms** après chaque frappe pour les applications et le calcul. Moins de 50 ms pour les fichiers, même avec un index de plus d'un million d'entrées.
 - **L'interface ne se bloque jamais.** Toutes les recherches coûteuses tournent hors du thread de l'UI, et une requête obsolète est annulée dès que l'utilisateur tape un nouveau caractère.
-- Mémoire au repos : objectif inférieur à 80 Mo, index de fichiers compris, pour un usage typique.
-- CPU au repos : environ 0 %. Pas de polling ; on utilise les événements du système de fichiers.
+
+### Sobriété quand Flair est caché
+Flair passe 99 % de son temps caché. Il doit alors être **invisible pour le PC** : aucun ralentissement, aucun impact sur la batterie, le moins de mémoire possible.
+
+**Objectifs chiffrés (fenêtre cachée, usage typique) :**
+
+| Mesure | Objectif |
+|---|---|
+| CPU au repos | **0 %**, et **aucun réveil** de l'app sans événement extérieur (raccourci, fichier modifié, IPC) |
+| RAM sans index de fichiers | **< 40 Mo** |
+| RAM avec un index d'un million de fichiers | **< 80 Mo** |
+| Disque au repos | aucune lecture ni écriture |
+| Indexation initiale | ne ralentit pas visiblement le PC (priorité arrière-plan) |
+
+Ces objectifs **ne doivent jamais dégrader la réactivité** : l'affichage en moins de 50 ms reste prioritaire. Si une économie (libérer la mémoire, rendu logiciel…) fait dépasser les 50 ms, on l'allège ou on la rend optionnelle, et on le documente.
+
+#### 1. Zéro réveil inutile
+- **Aucun minuteur, aucun polling**, nulle part. Tout est piloté par des événements.
+- Fenêtre cachée : aucun abonnement Iced actif (pas d'animation, pas de `time::every`, pas de redessin).
+- Taux de change : mis à jour **seulement** quand l'utilisateur tape un calcul de devise et que le cache est trop vieux. Jamais en tâche de fond.
+- Les threads de travail (indexation, recherche) sont **endormis** quand ils n'ont rien à faire. Pas d'attente active.
+
+#### 2. Index de fichiers compact et chargé à la demande
+- Stockage compact : tous les noms dans **un seul tampon d'octets**, et chaque entrée sous la forme `(index du parent, début et longueur du nom, métadonnées minimales)`. Jamais un `PathBuf` ou un `String` par fichier. Les chemins complets sont reconstruits seulement pour les résultats affichés.
+- **Index ouvert directement depuis le fichier sur disque** (`memmap2` + `rkyv`, lecture sans copie). Le système charge en RAM seulement les pages utilisées pendant une recherche, et peut les libérer quand Flair dort.
+- Les modifications (ajouts et suppressions entre deux sauvegardes) vont dans un petit index séparé en mémoire. Il est fusionné dans le fichier de temps en temps, pendant une période d'inactivité.
+
+#### 3. Surveillance des fichiers économe
+- Événements **regroupés** avec `notify-debouncer-full` (1 à 2 s) : une compilation qui touche 10 000 fichiers = un seul réveil, pas 10 000.
+- Dossiers bruyants exclus par défaut : `node_modules`, `target`, `.git`, `.cache`, `__pycache__`, `AppData\Local`, `AppData\Roaming\*\Cache`, `~/.cache`, `~/.local/share/Trash`, et les caches de navigateur.
+- Sous Linux, inotify demande une surveillance par dossier : surveiller le nombre utilisé, rester bien en dessous de `fs.inotify.max_user_watches`, et passer en rescan périodique des dossiers non surveillés si la limite approche (avec un message dans les logs).
+- **Mode batterie** (`pause_on_battery = true` par défaut) : sur batterie, la surveillance et l'indexation sont mises en pause, puis rattrapées au retour sur secteur. La recherche continue de marcher avec l'index existant.
+
+#### 4. Indexation en basse priorité
+- Le thread d'indexation tourne en **priorité arrière-plan, pour le CPU et le disque** : `SetThreadPriority(THREAD_MODE_BACKGROUND_BEGIN)` sous Windows, `nice` + `ioprio_set` (classe *idle*) sous Linux.
+- Parallélisme limité pendant l'indexation (par exemple la moitié des cœurs au maximum).
+- Indexation complète **une seule fois** (premier lancement ou réindexation demandée), puis uniquement les changements.
+
+#### 5. Rendre la mémoire quand Flair est caché
+Quelques secondes après le masquage (délai réglable) :
+- vider les caches temporaires : résultats de la dernière recherche, icônes non vues récemment (le cache LRU est réduit à une petite taille) ;
+- **Windows** : activer le **mode efficacité** (EcoQoS, `SetProcessInformation` avec `ProcessPowerThrottling`), puis réduire la mémoire de travail (`EmptyWorkingSet` / `SetProcessWorkingSetSize`). On désactive EcoQoS dès que la fenêtre s'affiche ;
+- **Linux** : `malloc_trim(0)` (glibc) pour rendre au système la mémoire libérée ;
+- **vérifier** que l'affichage suivant reste sous les 50 ms. Sinon, alléger ces étapes.
+
+#### 6. Rendu léger
+- Réglage `renderer = "auto" | "gpu" | "cpu"`. `cpu` utilise le rendu logiciel d'Iced (`tiny-skia`), sans contexte GPU ni mémoire vidéo occupée.
+- **Mesurer les deux** sous Windows et Linux : RAM et mémoire vidéo au repos, temps d'affichage, fluidité de la frappe. `auto` choisit le meilleur compromis selon ces mesures, et les résultats sont notés dans le `README`.
+
+#### 7. Tout charger à la demande
+- Icônes chargées seulement quand elles s'affichent, jamais toutes au démarrage.
+- Chaque source de résultats s'initialise à son premier usage quand c'est possible. Exception : les applications, qui doivent être prêtes immédiatement.
+- Une seule police intégrée pour l'interface (plus la police mono des calculs si nécessaire), sous-ensemble de caractères si la taille compte.
+- Profil `release` : `lto = "fat"`, `codegen-units = 1`, `strip = true`, `opt-level = 3`.
+
+#### 8. Mesurer plutôt que deviner
+- Commande `flair --stats` et entrée **Statistiques** dans le menu de l'icône de notification. On y voit : RAM utilisée, taille de l'index (fichier et RAM), nombre d'entrées, dossiers surveillés, nombre de réveils depuis le démarrage, temps du dernier affichage, moteur de rendu actif.
+- Compteur interne de réveils (chaque événement traité est compté), pour vérifier l'objectif « aucun réveil ».
+- Vérification manuelle documentée dans le `README` : `powertop` et `pidstat` sous Linux, Process Explorer (« Context Switch Delta », « Private Bytes ») sous Windows.
 
 ---
 
@@ -232,8 +290,8 @@ pub trait Provider: Send + Sync {
 - Construire un **index en mémoire** des chemins à partir de racines configurables (par défaut : dossier personnel, Bureau, Documents, Téléchargements, Images, plus les autres disques sous Windows, à activer dans la config).
 - Parcours parallèle avec `jwalk` ou `ignore` (`WalkParallel`), en excluant par défaut : `node_modules`, `.git`, `target`, `AppData\Local\Temp`, `$Recycle.Bin`, `/proc`, `/sys`, les dossiers cachés (configurable), plus les motifs de la config.
 - Mise à jour incrémentale avec `notify`.
-- **Sauvegarde de l'index sur disque** (`bincode` ou `rkyv`) pour que Flair soit utilisable immédiatement après un redémarrage, puis resynchronisation en arrière-plan.
-- Stockage compact : chemins dédupliqués (arbre parent/enfant ou chaînes stockées une seule fois), pour tenir l'objectif mémoire.
+- **Index sauvegardé sur disque et ouvert directement depuis le fichier** (`memmap2` + `rkyv`), pour que Flair soit utilisable immédiatement après un redémarrage, puis resynchronisation en arrière-plan.
+- Stockage compact (tampon de noms unique + arbre parent/enfant), pour tenir l'objectif mémoire. Détails, surveillance et priorité d'indexation : section 3, « Sobriété quand Flair est caché ».
 - Si la requête ressemble à un chemin (`C:\Us`, `~/Doc`, `/etc/`), proposer le contenu du dossier avec complétion par `Tab`.
 - Plus tard, en option sous Windows : lecture de la MFT/USN Journal NTFS pour une indexation façon *Everything*. **À ne pas faire dans les premiers jalons**, mais à garder possible dans l'architecture.
 
@@ -552,8 +610,14 @@ animations = true
 [files]
 enabled = true
 roots = ["~"]
-exclude = ["node_modules", ".git", "target"]
+exclude = ["node_modules", ".git", "target", ".cache", "__pycache__"]
 include_hidden = false
+
+[resources]
+renderer = "auto"           # auto | gpu | cpu
+pause_on_battery = true     # suspendre la surveillance et l'indexation sur batterie
+trim_memory_after = 5       # secondes après le masquage avant de libérer la mémoire (0 = jamais)
+efficiency_mode = true      # Windows : mode efficacité (EcoQoS) quand Flair est caché
 
 [providers]
 apps = true
@@ -601,12 +665,12 @@ Le développeur travaille **sous WSL2** (Ubuntu) sur une machine Windows 11.
 Chaque jalon se termine par : compilation OK sur les deux cibles, clippy propre, tests verts, `README` à jour, et un court résumé de ce qui a été fait et de ce qui reste.
 
 1. **Squelette** : workspace, crates, trait `Provider`, config TOML, logs, traductions de l'interface FR/EN, **système de thèmes** (3 couleurs → jetons, ajustement du contraste, thèmes intégrés avec leurs tests), fenêtre Iced fidèle aux maquettes et dimensions de la section 7 avec des résultats factices, navigation au clavier.
-2. **Afficher et cacher** : app résidente, icône de notification, raccourci global (Windows et X11), instance unique et `--toggle` via IPC, se cache quand elle perd le focus.
+2. **Afficher et cacher** : app résidente, icône de notification, raccourci global (Windows et X11), instance unique et `--toggle` via IPC, se cache quand elle perd le focus. Dès ce jalon : **aucun réveil quand la fenêtre est cachée**, compteur de réveils et première version de `flair --stats`.
 3. **Applications et calcul de base** : provider d'applications Windows et Linux avec icônes ; moteur de calcul (pipeline complet, lexique et normalisation bilingues FR/EN, règles d'ambiguïté, `fend-core`, nombres, fonctions, octets, unités, variantes) avec son tableau de tests ; classement avec `nucleo` et frecency.
 4. **Calculs avancés** : durées et heures de la journée, dates, horodatages Unix, bases et opérations bit à bit, temps de transfert, devises avec cache, historique des calculs, limites de robustesse.
-5. **Fichiers** : index parallèle, sauvegarde sur disque, mise à jour avec `notify`, complétion de chemins, action « ouvrir le dossier ».
+5. **Fichiers** : index parallèle **compact et ouvert depuis le disque** (`memmap2` + `rkyv`), indexation en priorité arrière-plan, mise à jour avec `notify` regroupée, exclusions par défaut, mode batterie, complétion de chemins, action « ouvrir le dossier ».
 6. **Web et système** : mots-clés de recherche web, commandes système avec confirmation, préfixes de filtrage.
-7. **Wayland et finitions** : portail GlobalShortcuts, layer-shell quand il est disponible, suivi du thème système en direct, thèmes personnalisés (fichiers, `> thème` avec aperçu en direct, création à partir de 3 couleurs), lancement au démarrage, rechargement à chaud de la config, benchmarks, CI.
+7. **Wayland et finitions** : portail GlobalShortcuts, layer-shell quand il est disponible, suivi du thème système en direct, thèmes personnalisés (fichiers, `> thème` avec aperçu en direct, création à partir de 3 couleurs), lancement au démarrage, rechargement à chaud de la config, **libération de la mémoire quand l'app est cachée** (EcoQoS, `EmptyWorkingSet`, `malloc_trim`), comparaison et choix du moteur de rendu, benchmarks, CI.
 
 ---
 
@@ -632,7 +696,12 @@ Chaque jalon se termine par : compilation OK sur les deux cibles, clippy propre,
 - [ ] `> éteindre` demande une confirmation avant d'agir.
 - [ ] Une config TOML invalide n'empêche pas le démarrage et un message d'erreur clair s'affiche.
 - [ ] Taper très vite ne bloque jamais l'interface et n'affiche jamais les résultats d'une ancienne requête.
-- [ ] Au repos, l'utilisation du CPU est d'environ 0 %.
+- [ ] Au repos, l'utilisation du CPU est de 0 % : après 1 h fenêtre cachée sans modification de fichiers, le compteur de réveils de `flair --stats` n'a pas bougé.
+- [ ] Fenêtre cachée : moins de 40 Mo de RAM sans index de fichiers, moins de 80 Mo avec un index d'un million de fichiers.
+- [ ] Après la libération de la mémoire, l'affichage suivant reste sous les 50 ms.
+- [ ] Une compilation qui modifie 10 000 fichiers dans un dossier surveillé ne provoque qu'une poignée de réveils (événements regroupés).
+- [ ] Pendant l'indexation initiale, le PC reste fluide (thread en priorité arrière-plan pour le CPU et le disque).
+- [ ] Sur batterie avec `pause_on_battery = true`, aucune activité d'indexation n'a lieu.
 - [ ] Aucune couleur n'est écrite en dur hors du module de thèmes : toute l'interface utilise les jetons dérivés des 3 couleurs.
 - [ ] Passer le système de clair à sombre change le thème de Flair en direct.
 - [ ] `> thème 1E1B2E E6E1F5 B79CFF lavande` affiche l'aperçu immédiatement ; `Entrée` crée `themes/lavande.toml` et l'applique.
