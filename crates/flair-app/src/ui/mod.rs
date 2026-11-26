@@ -4,7 +4,10 @@
 //! thread. Each query has a sequence number; late answers to an older query
 //! are dropped, and starting a new query cancels the previous one.
 
+mod screens;
 mod view;
+
+pub use screens::{bytes, should_offer_install};
 
 pub use view::INTER;
 
@@ -30,6 +33,8 @@ use crate::design;
 use crate::external::{self, External};
 use crate::services::Services;
 use crate::style::Palette;
+use crate::updater;
+use screens::{Done, Screen};
 
 /// Id of the search field.
 const INPUT_ID: &str = "search";
@@ -45,6 +50,17 @@ pub struct Flair {
     services: Services,
     config: Config,
     config_path: PathBuf,
+    paths: flair_platform::paths::Paths,
+    update_files: updater::Files,
+    /// Special list (installation, update, export…) replacing the results.
+    screen: Option<Screen>,
+    screen_rows: Vec<ResultItem>,
+    /// A native dialog is open: losing the focus must not hide Flair.
+    dialog_open: bool,
+    /// Newer version found by the automatic check.
+    update_available: Option<String>,
+    /// Backup made before the last import (`> undo`).
+    last_import_backup: Option<PathBuf>,
     i18n: Arc<I18n>,
     tokens: Tokens,
     opacity: f32,
@@ -91,6 +107,8 @@ pub enum Message {
     External(External),
     /// The window manager asked to close the window (Alt+F4): hide it.
     CloseRequested,
+    /// Background work finished (update, export, import…).
+    Done(Done),
 }
 
 /// Which action of a result to run.
@@ -111,6 +129,19 @@ pub struct Dev {
     pub shot_pending: bool,
 }
 
+/// What the list shows first.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Initial {
+    /// The search field.
+    Search,
+    /// First launch of a portable executable: offer to install.
+    Install,
+    /// `flair --uninstall` (Windows "Installed apps").
+    Uninstall,
+    /// `flair file.flair` (double-click): import summary.
+    Import(PathBuf),
+}
+
 #[derive(Clone)]
 pub struct Init {
     pub dev: Dev,
@@ -120,6 +151,11 @@ pub struct Init {
     pub start_visible: bool,
     /// First start on Wayland: explain how to bind a desktop shortcut.
     pub wayland_hint: bool,
+    pub paths: flair_platform::paths::Paths,
+    /// What to show first.
+    pub initial: Initial,
+    /// One-off messages (updated, rolled back…), shown at startup.
+    pub messages: Vec<String>,
     pub issues: Vec<ConfigIssue>,
     pub i18n: Arc<I18n>,
     pub tokens: Tokens,
@@ -129,15 +165,29 @@ pub struct Init {
 
 impl Flair {
     pub fn new(init: Init, services: Services) -> (Self, Task<Message>) {
-        let mut notices = notices(&init.i18n, &init.issues);
+        let mut notices: Vec<ResultItem> = init
+            .messages
+            .iter()
+            .map(|m| crate::commands::info(m.clone(), None))
+            .collect();
+        notices.extend(notices_for(&init.i18n, &init.issues));
         notices.extend(hotkey_notice(&init, services.hotkey_error.as_ref()));
         // Problems must be seen: show the window if there are any.
-        let start_visible = init.start_visible || !notices.is_empty();
+        let start_visible =
+            init.start_visible || !notices.is_empty() || init.initial != Initial::Search;
+        let update_files = updater::Files::new(&init.paths.data_dir);
         let mut state = Self {
             window: None,
             visible: false,
             services,
             config_path: init.config_path,
+            paths: init.paths,
+            update_files,
+            screen: None,
+            screen_rows: Vec::new(),
+            dialog_open: false,
+            update_available: None,
+            last_import_backup: None,
             i18n: init.i18n,
             tokens: init.tokens,
             #[allow(clippy::cast_possible_truncation)]
@@ -159,12 +209,20 @@ impl Flair {
             started: init.started,
             dev: init.dev,
         };
+        let initial = match init.initial {
+            Initial::Search => Task::none(),
+            Initial::Install => state.set_screen(Some(Screen::Install { autostart: true })),
+            Initial::Uninstall => state.set_screen(Some(Screen::Uninstall)),
+            Initial::Import(path) => state.read_import(path),
+        };
         let task = if start_visible {
-            state.show()
+            Task::batch([initial, state.show()])
         } else if crate::platform_window::can_hide() {
             // Create the window hidden now, so showing it later is instant.
             state.open_window()
         } else {
+            // Nothing to wait for: the startup is complete.
+            updater::confirm_started(&state.update_files);
             Task::none()
         };
         (state, task)
@@ -186,10 +244,13 @@ impl Flair {
         }
     }
 
-    /// Rows currently displayed: results, or information / notices when empty.
+    /// Rows currently displayed: results, or screen / information / notices
+    /// when the field is empty.
     fn rows(&self) -> &[ResultItem] {
         if !self.input.trim().is_empty() {
             &self.results
+        } else if !self.screen_rows.is_empty() {
+            &self.screen_rows
         } else if !self.info_rows.is_empty() {
             &self.info_rows
         } else {
@@ -213,6 +274,8 @@ impl Flair {
             }
             Message::WindowReady(id, raw) => {
                 flair_platform::window::disable_animations(raw);
+                // Window ready and shortcut registered: a fresh update works.
+                updater::confirm_started(&self.update_files);
                 if !self.visible || self.window != Some(id) {
                     return Task::none(); // kept hidden and warm
                 }
@@ -258,7 +321,7 @@ impl Flair {
                 tracing::debug!("unfocused");
                 // Only after a first focus: some compositors send a spurious
                 // unfocus while the window is being mapped.
-                if self.was_focused {
+                if self.was_focused && !self.dialog_open {
                     self.hide()
                 } else {
                     Task::none()
@@ -301,6 +364,7 @@ impl Flair {
             }
             Message::External(event) => self.on_external(event),
             Message::CloseRequested => self.hide(),
+            Message::Done(done) => self.on_done(done),
         }
     }
 
@@ -318,6 +382,14 @@ impl Flair {
                 }
             }
             External::Quit => iced::exit(),
+            External::Uninstall => {
+                Task::batch([self.set_screen(Some(Screen::Uninstall)), self.show()])
+            }
+            External::Reload => {
+                self.reload_config();
+                Task::none()
+            }
+            External::Open(path) => Task::batch([self.read_import(path), self.show()]),
             External::Tray(action) => self.on_tray(action),
         }
     }
@@ -342,8 +414,9 @@ impl Flair {
                 Task::batch([self.show(), self.resize()])
             }
             TrayAction::Quit => iced::exit(),
-            // Not available yet (milestones 3 and 6): disabled in the menu.
-            TrayAction::Reindex | TrayAction::CheckUpdate => Task::none(),
+            TrayAction::CheckUpdate => Task::batch([self.show(), self.run_command("update")]),
+            // Not available yet (milestone 6): disabled in the menu.
+            TrayAction::Reindex => Task::none(),
         }
     }
 
@@ -385,15 +458,16 @@ impl Flair {
         crate::stats::set_visible(true);
         self.show_requested = Some(Instant::now());
         self.was_focused = false;
+        let auto_check = self.maybe_auto_check();
         let keep = self.config.keep_last_query && !self.input.is_empty();
-        if !keep {
+        if !keep && self.screen.is_none() {
             self.input.clear();
             self.results.clear();
             self.selected = 0;
         }
 
         let Some(id) = self.window else {
-            return self.open_window();
+            return Task::batch([self.open_window(), auto_check]);
         };
         let mut tasks = Vec::new();
         if let Some(position) = position_under_mouse() {
@@ -406,7 +480,42 @@ impl Flair {
         if keep {
             tasks.push(operation::select_all(Id::new(INPUT_ID)));
         }
+        tasks.push(auto_check);
         Task::batch(tasks)
+    }
+
+    /// Gives the focus back to the window (after a native dialog).
+    fn refocus(&self) -> Task<Message> {
+        match self.window {
+            Some(id) => Task::batch([window::gain_focus(id), operation::focus(Id::new(INPUT_ID))]),
+            None => Task::none(),
+        }
+    }
+
+    /// Re-reads `config.toml` and applies it (after an import or undo).
+    fn reload_config(&mut self) {
+        let text = std::fs::read_to_string(&self.config_path).unwrap_or_default();
+        let loaded = flair_core::settings::parse_config(&text);
+        let config = loaded.config;
+        if config.hotkey != self.config.hotkey {
+            self.services.reregister_hotkey(&config.hotkey);
+        }
+        let lang = flair_core::i18n::Lang::resolve(config.ui_language);
+        if lang != self.i18n.lang() {
+            self.i18n = Arc::new(I18n::new(lang));
+        }
+        self.tokens = crate::themes::active(&config).tokens();
+        #[allow(clippy::cast_possible_truncation)]
+        {
+            self.opacity = config.theme.opacity as f32;
+        }
+        self.provider = Arc::new(crate::mock::MockProvider::new(
+            Arc::clone(&self.i18n),
+            config.max_results as usize,
+        ));
+        self.notices = notices_for(&self.i18n, &loaded.issues);
+        self.config = config;
+        tracing::info!("configuration reloaded");
     }
 
     fn open_window(&mut self) -> Task<Message> {
@@ -439,12 +548,33 @@ impl Flair {
     }
 
     fn search(&mut self, value: String) -> Task<Message> {
+        if !value.is_empty() {
+            // Typing leaves any screen.
+            self.screen = None;
+            self.screen_rows.clear();
+        }
         self.input = value;
         self.cancel.cancel();
         self.cancel = CancellationToken::new();
         self.query_seq += 1;
 
         let query = Query::parse(&self.input);
+        if query.filter == Some(ProviderKind::Command) {
+            // Flair's own commands: computed at once, no search needed.
+            let portable = std::env::current_exe().is_ok_and(|exe| {
+                flair_platform::install::location(&exe)
+                    == flair_platform::install::Location::Portable
+            });
+            let cx = crate::commands::Context {
+                i18n: &self.i18n,
+                portable,
+                update_available: self.update_available.as_deref(),
+            };
+            self.results = crate::commands::rows(&query.text, &cx);
+            self.selected = 0;
+            self.dev.shot_pending = self.dev.screenshot.is_some();
+            return Task::batch([self.resize(), self.scroll_to(0.0)]);
+        }
         if query.is_empty() {
             self.results.clear();
             self.selected = 0;
@@ -483,7 +613,9 @@ impl Flair {
                 iced::clipboard::write(text)
             }
             Key::Named(Named::Escape) => {
-                if self.input.is_empty() {
+                if self.input.is_empty() && self.screen.is_some() {
+                    self.set_screen(None)
+                } else if self.input.is_empty() {
                     self.hide()
                 } else {
                     // The text field drops its focus on Escape: take it back.
@@ -584,6 +716,7 @@ impl Flair {
                 open(std::path::Path::new(&url));
                 self.hide()
             }
+            Action::Internal { command } => self.run_command(&command),
             // Launching applications and system commands: milestones 4 and 7.
             Action::Launch { .. } | Action::SystemCommand(_) => self.hide(),
         }
@@ -600,6 +733,11 @@ impl Flair {
         self.cancel.cancel();
         self.show_requested = None;
         self.info_rows.clear();
+        // Results of actions are not shown again; ongoing ones keep their screen.
+        if matches!(self.screen, Some(Screen::Rows(_))) {
+            self.screen = None;
+            self.screen_rows.clear();
+        }
         self.hovered = None;
         self.ctrl_held = false;
         if !self.config.keep_last_query {
@@ -678,7 +816,7 @@ fn digit(physical: Physical) -> Option<usize> {
 }
 
 /// Rows explaining configuration problems (shown while the field is empty).
-fn notices(i18n: &I18n, issues: &[ConfigIssue]) -> Vec<ResultItem> {
+fn notices_for(i18n: &I18n, issues: &[ConfigIssue]) -> Vec<ResultItem> {
     issues
         .iter()
         .enumerate()
@@ -841,6 +979,11 @@ mod tests {
             config_path: PathBuf::from("config.toml"),
             start_visible: true,
             wayland_hint: false,
+            paths: flair_platform::paths::Paths::rooted(
+                &std::env::temp_dir().join("flair-ui-tests"),
+            ),
+            initial: Initial::Search,
+            messages: vec![],
             issues: vec![],
             i18n: Arc::clone(&i18n),
             tokens: builtin::dark().tokens(),
@@ -990,7 +1133,7 @@ mod tests {
     fn config_issues_are_shown_only_when_the_field_is_empty() {
         let i18n = Arc::new(I18n::new(Lang::Fr));
         let issues = vec![ConfigIssue::UnknownKey("foo".into())];
-        let rows = notices(&i18n, &issues);
+        let rows = notices_for(&i18n, &issues);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].subtitle.as_deref(), Some("réglage inconnu : foo"));
     }
@@ -1052,6 +1195,11 @@ mod tests {
             config_path: PathBuf::from("config.toml"),
             start_visible: false,
             wayland_hint: false,
+            paths: flair_platform::paths::Paths::rooted(
+                &std::env::temp_dir().join("flair-ui-tests"),
+            ),
+            initial: Initial::Search,
+            messages: vec![],
             issues: vec![],
             i18n: Arc::clone(&i18n),
             tokens: builtin::dark().tokens(),

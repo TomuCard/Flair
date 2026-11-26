@@ -14,6 +14,9 @@ pub fn fonts() -> [&'static [u8]; 4] {
     [INTER_REGULAR, INTER_MEDIUM, INTER_SEMIBOLD, JETBRAINS_MONO]
 }
 
+/// Fixed color of the application icon (executable, Start menu, `.desktop`).
+pub const APP_ICON_COLOR: &str = "#E06A28";
+
 /// Logo sources (single color, `currentColor`), for rendering outside Iced (tray).
 pub const LOGO_SVG: &str = include_str!("../../../assets/icons/flair.svg");
 /// Simplified logo for 16 px.

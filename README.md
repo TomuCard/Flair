@@ -6,7 +6,17 @@ Launcher clavier façon Spotlight / Raycast / PowerToys Run, en Rust, pour **Win
 |---|---|---|
 | ![](docs/screenshots/dark-en-apps.png) | ![](docs/screenshots/dark-en-calc.png) | ![](docs/screenshots/light-fr-apps.png) |
 
-> **État : jalon 2 (afficher et cacher).** Flair est résident : icône de notification, raccourci global (Windows et X11), instance unique pilotable par `flair --toggle`, aucun réveil quand la fenêtre est cachée, et `flair --stats`. Les résultats sont encore **factices** : les vraies sources (applications, calcul, fichiers, web, système) arrivent aux jalons 4 à 7. Le cahier des charges complet est dans [`PROMPT.md`](PROMPT.md).
+> **État : jalon 3 (distribution et mises à jour).** Flair est résident (icône de notification, raccourci global, instance unique, aucun réveil fenêtre cachée), s'installe lui-même, se met à jour par `> mise à jour` avec des versions signées publiées à chaque push sur `main`, et sauvegarde tout dans un fichier `.flair`. Les résultats de recherche sont encore **factices** : les vraies sources (applications, calcul, fichiers, web, système) arrivent aux jalons 4 à 7. Le cahier des charges complet est dans [`PROMPT.md`](PROMPT.md).
+
+## Installer
+
+Télécharger `flair-windows-x86_64.exe` (ou `flair-linux-x86_64`) depuis la [page des versions](https://github.com/TomuCard/Flair/releases) et le lancer. Au premier lancement, Flair propose :
+- **Installer Flair** : copie dans `%LocalAppData%\Programs\Flair\flair.exe` (sans droits administrateur), raccourci dans le menu Démarrer, lancement au démarrage (coché par défaut), entrée dans « Applications installées », association des fichiers `.flair`. Sous Linux : `~/.local/bin/flair`, entrée `.desktop`, icône, type MIME ;
+- **Utiliser sans installer** : mode portable, Flair reste où il est (les mises à jour marchent si le dossier est accessible en écriture).
+
+**Avertissement SmartScreen** : l'exe n'est pas encore signé avec un certificat Authenticode. Au **premier** lancement d'un exe téléchargé avec un navigateur, Windows affiche « Windows a protégé votre ordinateur » : cliquer sur « Informations complémentaires » puis « Exécuter quand même ». Les mises à jour téléchargées par Flair lui-même ne déclenchent pas cet avertissement.
+
+**Désinstaller** : `> désinstaller` / `> uninstall`, ou depuis Paramètres → Applications installées. Flair demande s'il faut garder la configuration et les données.
 
 ## Compiler et lancer
 
@@ -56,6 +66,29 @@ Flair tourne en permanence en arrière-plan ; la fenêtre est cachée et réaffi
 | `flair --show` | Affiche la fenêtre |
 | `flair --stats` | Statistiques de l'instance lancée (mémoire, réveils, temps du dernier affichage, moteur de rendu…) |
 | `flair --quit` | Ferme l'instance lancée |
+| `flair --update` | Cherche une mise à jour et l'installe |
+| `flair --export <fichier> [--settings-only]` | Exporte tout (ou les réglages seulement) dans un `.flair` |
+| `flair --import <fichier> [--merge]` | Importe un `.flair` (sauvegarde automatique avant) ; `--merge` : thèmes et lexiques seulement |
+| `flair <fichier>.flair` | Ouvre Flair sur le résumé d'import (double-clic sur un export) |
+| `flair --uninstall` | Affiche l'écran de désinstallation |
+| `flair --version` | Version, commit, date de compilation et canal |
+
+### Commandes `>` disponibles
+
+| Commande (FR / EN) | Effet |
+|---|---|
+| `> mise à jour` / `> update` | Cherche la dernière version du canal ; `Entrée` l'installe |
+| `> mise à jour annuler` / `> update rollback` | Revient à la version précédente (conservée sur le disque) |
+| `> mise à jour canal stable` / `> update channel main` | Change de canal |
+| `> version` | Version, commit, date et canal |
+| `> exporter` / `> export` | « Tout » ou « Réglages seulement », puis boîte « Enregistrer sous » |
+| `> importer` / `> import` | « Choisir un fichier… » ou une sauvegarde automatique, résumé, puis « Tout remplacer » ou « Ajouter les thèmes et lexiques » |
+| `> annuler` / `> undo` | Revient à l'état d'avant le dernier import |
+| `> installer` / `> install` | En mode portable : installer Flair |
+| `> désinstaller` / `> uninstall` | Désinstaller |
+| `> quitter` / `> quit` | Fermer Flair |
+
+Le système de commandes complet (`> config`, `> help`, mots dans les fichiers de langue) arrive au jalon 7.
 
 Une seule instance tourne à la fois : un second `flair` envoie sa commande à l'instance existante (named pipe sous Windows, socket Unix abstraite sous Linux, crate `interprocess`) puis quitte.
 
@@ -69,6 +102,38 @@ Si le raccourci est déjà pris par une autre application, Flair démarre quand 
 **Icône de notification** : Afficher, Réindexer (jalon 6), Ouvrir la configuration, Rechercher une mise à jour (jalon 3), Lancer au démarrage, Statistiques, Quitter. Un clic gauche affiche ou cache la fenêtre. L'icône est le logo rendu à l'exécution (`resvg`) dans la couleur de la barre des tâches (`SystemUsesLightTheme` sous Windows).
 - Windows : `tray-icon` ;
 - Linux : StatusNotifierItem via `ksni` sur un runtime Tokio d'un seul thread. Le backend KSNI de `tray-icon` impose la pile `async-io`, dont le pool `blocking` garde un thread qui se réveille toutes les 500 ms pour toujours : rejeté pour la même raison que ci-dessus. Sous GNOME, l'icône demande l'extension « AppIndicator ».
+
+## Mises à jour
+
+Chaque push sur `main` dont les tests passent publie une pré-version `X.Y.Z-main.N` (canal `main`) ; un tag `vX.Y.Z` publie une version stable (canal `stable`). Le workflow `.github/workflows/release.yml` :
+1. relance fmt, clippy et les tests sur Windows et Linux (**s'ils échouent, rien n'est publié**) ;
+2. compile nativement sur `windows-latest` et `ubuntu-latest`, avec la version, le commit et la date intégrés (`flair --version`) ;
+3. signe chaque binaire (minisign, avec `rsign2`) avec le secret `FLAIR_SIGNING_KEY`, puis vérifie la signature avec la clé publique intégrée au code ;
+4. écrit `manifest.json` (version, notes générées depuis les commits, `min_updater_version`, `config_version`, `requires_reset`, SHA-256 de chaque binaire) ;
+5. vérifie que **la version publiée précédente sait lire le nouveau manifest** (`--check-manifest`) ;
+6. publie la release GitHub et ne garde que les 20 dernières pré-versions `main`.
+
+**Sécurité** :
+- signature Ed25519 (minisign) **et** SHA-256 vérifiés **avant** de toucher à quoi que ce soit ; la clé publique est dans le binaire, la clé privée seulement dans le secret GitHub ;
+- le commentaire signé contient la version et la plateforme : un ancien binaire signé ne peut pas être présenté comme une nouvelle version ;
+- HTTPS uniquement (rustls) ; le dépôt (`TomuCard/Flair`) est fixé à la compilation, la configuration ne peut pas rediriger les mises à jour ;
+- jamais de retour à une version plus ancienne, sauf `> mise à jour annuler`.
+
+**Déroulement** : téléchargement avec progression, vérification, `flair.exe` renommé en `flair.previous.exe` (un exe en cours d'exécution peut être renommé) et remplacé par la nouvelle version, puis redémarrage. Une sauvegarde `.flair` est faite avant. La nouvelle version confirme son démarrage une fois la fenêtre prête : si elle plante **deux fois de suite** avant, le lancement suivant restaure automatiquement la version précédente et l'annonce.
+
+**Vérification automatique** (`update.auto_check`) : au plus une fois toutes les 24 h, **seulement quand on ouvre Flair**, jamais par un minuteur. Une version disponible est signalée par une ligne dans la liste `>`. Rien n'est jamais installé sans demande.
+
+**Gros changements** : les migrations de configuration (`config_version`, une étape testée par version, sauvegarde `.flair` avant) évitent toute réinstallation. `requires_reset = true` dans le manifest prévient avant, sauvegarde, puis réinitialise. Si la version installée est plus ancienne que `min_updater_version`, Flair renvoie vers la page des versions (seul cas de retéléchargement).
+
+**Mises à jour désactivées** pour les compilations locales (`X.Y.Z-dev`), les installations par un gestionnaire de paquets (`/usr`) et un dossier non accessible en écriture.
+
+## Exporter et importer : fichiers `.flair`
+
+Un `.flair` est une archive ZIP de fichiers texte : `manifest.json`, `config.toml`, `themes/*.toml`, `lexicon/*.toml`, `data/history.json`, `data/frecency.json`. Jamais l'index, le cache d'icônes, les logs ni du code. Les chemins du dossier personnel sont écrits `~` pour rester valables sur un autre PC (Windows ↔ Linux).
+
+Un `.flair` n'est pas fiable par défaut : seuls les chemins attendus sont lus, un chemin absolu ou avec `..` fait refuser toute l'archive, la taille est limitée (10 Mo par fichier, 50 Mo au total une fois décompressé), chaque fichier est validé comme s'il était écrit à la main, et **rien n'est écrit avant que toute l'archive soit lue et vérifiée**. Un fichier d'une version plus récente est refusé ; un fichier plus ancien passe par les migrations.
+
+Sauvegardes automatiques (avant une mise à jour, un import, une migration ou une réinitialisation) : même format, dans `backups/` du dossier de données, 10 conservées.
 
 ## Sobriété : mesures
 
@@ -180,6 +245,9 @@ Réglages (table générée depuis le registre, `UPDATE_README=1 cargo test -p f
 ## Limitations connues
 
 - **Position** : sous Windows, la fenêtre apparaît sur l'écran sous la souris. Sous Linux, elle reste sur l'écran principal (X11 : à faire ; Wayland : impossible sans layer-shell, jalon 8).
+- **Mots des commandes `>`** : en attendant le jalon 7, les mots français et anglais des quelques commandes existantes sont dans le code (`commands.rs`), pas encore dans les fichiers de langue.
+- **Progression de mise à jour** : affichée dans la fenêtre ; pas encore dans l'infobulle de l'icône de notification.
+- **Icônes Linux** : seule l'icône vectorielle (`hicolor/scalable`) est installée, pas encore les PNG 16 à 256 px.
 - **Wayland, masquage** : winit ne sait pas cacher une fenêtre sous Wayland. Flair la ferme et en ouvre une nouvelle à l'affichage suivant (12 à 15 ms mesurés). Sans portail XDG (WSLg), le premier affichage attend 100 ms un portail qui ne répond pas (`sctk_adwaita`, imposé par Iced).
 - **Fenêtre Linux** : elle apparaît dans la barre des tâches sous Linux (Iced n'expose pas cet attribut) ; layer-shell (jalon 8) réglera ça sur KDE et wlroots.
 - **Wayland, hauteur de la fenêtre** : winit applique un redimensionnement demandé par l'application sans envoyer d'événement `Resized`, et Iced ne refait alors pas sa mise en page. Sous Wayland, la fenêtre transparente garde donc sa hauteur maximale et seul le cadre visible change de taille. Sous Windows et X11, la fenêtre est redimensionnée normalement.

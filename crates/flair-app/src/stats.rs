@@ -78,7 +78,7 @@ pub fn snapshot() -> Snapshot {
     let last_show = LAST_SHOW_US.load(Ordering::Relaxed);
     #[allow(clippy::cast_precision_loss)]
     Snapshot {
-        version: env!("CARGO_PKG_VERSION").into(),
+        version: crate::build_info::VERSION.into(),
         uptime_s: STARTED.get().map_or(0, |s| s.elapsed().as_secs()),
         ram_bytes: flair_platform::memory::resident_bytes(),
         wakeups: wakeups(),

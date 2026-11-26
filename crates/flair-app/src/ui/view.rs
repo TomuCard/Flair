@@ -144,7 +144,10 @@ impl Flair {
             );
         }
 
-        let mut line = row![icon, texts.width(Fill)]
+        // Long titles and paths are cut at the column edge, never drawn under
+        // the hints on the right.
+        let texts = container(texts).width(Fill).clip(true);
+        let mut line = row![icon, texts]
             .spacing(design::ROW_GAP)
             .align_y(alignment::Vertical::Center);
 

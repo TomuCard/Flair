@@ -161,8 +161,10 @@ pub fn verify(
     Ok(())
 }
 
-#[cfg(test)]
-pub(crate) mod tests {
+/// Signed fake releases made with throwaway keys, for tests.
+#[cfg(any(test, feature = "test-support"))]
+#[allow(clippy::expect_used)] // test helpers: a failure is a broken test setup
+pub mod tests_support {
     use super::*;
 
     /// A signed fake release, made with a throwaway key.
@@ -212,6 +214,12 @@ pub(crate) mod tests {
             signature,
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tests_support::*;
+    use super::*;
 
     #[test]
     fn embedded_public_key_is_valid() {
@@ -275,6 +283,15 @@ pub(crate) mod tests {
         );
         assert_eq!(decide("0.1.0", &m), Ok(Decision::ManualDownload));
         assert!(decide("garbage", &m).is_err());
+        // `-0`: every pre-release of the minimum version may update.
+        assert_eq!(
+            decide("0.1.0-main.1", &manifest("0.2.0", "0.1.0-0")),
+            Ok(Decision::Available)
+        );
+        assert_eq!(
+            decide("0.1.0-main.1", &manifest("0.2.0", "0.1.0")),
+            Ok(Decision::ManualDownload)
+        );
         let mut no_asset = m.clone();
         no_asset.assets.clear();
         assert_eq!(decide("0.4.0-main.1", &no_asset), Err(UpdateError::NoAsset));

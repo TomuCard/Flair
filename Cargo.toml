@@ -20,7 +20,7 @@ global-hotkey = "0.10.0"
 interprocess = "2.4.10"
 minisign-verify = "0.3.0"
 ksni = { version = "0.3.8", default-features = false, features = ["tokio"] }
-rfd = { version = "0.18.0", default-features = false, features = ["xdg-portal", "tokio"] }
+rfd = { version = "0.18.0", default-features = false, features = ["xdg-portal"] }
 resvg = { version = "0.50.0", default-features = false }
 semver = "1.0.28"
 serde_json = "1.0"

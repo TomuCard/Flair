@@ -97,12 +97,27 @@ impl SystemCommand {
 /// Something a result can do. `actions[0]` is the main (`Enter`) action.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
-    Launch { target: LaunchTarget },
-    Open { path: PathBuf },
-    RevealInFolder { path: PathBuf },
-    CopyToClipboard { text: String },
-    OpenUrl { url: String },
+    Launch {
+        target: LaunchTarget,
+    },
+    Open {
+        path: PathBuf,
+    },
+    RevealInFolder {
+        path: PathBuf,
+    },
+    CopyToClipboard {
+        text: String,
+    },
+    OpenUrl {
+        url: String,
+    },
     SystemCommand(SystemCommand),
+    /// One of Flair's own commands (`> update`, `> export`…), identified by a
+    /// stable id interpreted by the application.
+    Internal {
+        command: String,
+    },
 }
 
 impl Action {
@@ -113,7 +128,7 @@ impl Action {
             Self::Launch { .. } | Self::Open { .. } | Self::OpenUrl { .. } => "action-open",
             Self::RevealInFolder { .. } => "action-reveal",
             Self::CopyToClipboard { .. } => "action-copy",
-            Self::SystemCommand(_) => "action-run",
+            Self::SystemCommand(_) | Self::Internal { .. } => "action-run",
         }
     }
 }

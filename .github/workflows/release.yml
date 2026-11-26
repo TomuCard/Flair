@@ -1,0 +1,205 @@
+name: Release
+
+# Every push to `main` publishes a signed pre-release `X.Y.Z-main.N` (channel
+# "main"); every `vX.Y.Z` tag publishes a stable release (channel "stable").
+# Nothing is published if a test fails.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  # Oldest Flair whose updater can install this release ("-0": also every
+  # pre-release of that version, e.g. 0.1.0-main.1).
+  MIN_UPDATER_VERSION: "0.1.0-0"
+  # Set to "true" for the rare release that must reset the settings.
+  REQUIRES_RESET: "false"
+  # Pre-releases of the main channel kept on GitHub.
+  KEEP_MAIN_RELEASES: "20"
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      channel: ${{ steps.v.outputs.channel }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        shell: bash
+        run: |
+          base=$(sed -n '/^\[workspace.package\]/,/^\[/{s/^version = "\(.*\)"/\1/p}' Cargo.toml)
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            channel=stable
+            if [[ "$version" != "$base" ]]; then
+              echo "::error::tag $version differs from Cargo.toml version $base"
+              exit 1
+            fi
+          else
+            version="$base-main.$GITHUB_RUN_NUMBER"
+            channel=main
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+          echo "Version: $version ($channel)"
+
+  test:
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - if: runner.os == 'Linux'
+        run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+
+  build:
+    needs: [version, test]
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary: flair.exe
+            asset: flair-windows-x86_64.exe
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            binary: flair
+            asset: flair-linux-x86_64
+    runs-on: ${{ matrix.os }}
+    env:
+      FLAIR_VERSION: ${{ needs.version.outputs.version }}
+      FLAIR_CHANNEL: ${{ needs.version.outputs.channel }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+      - run: cargo build --release -p flair-app --target ${{ matrix.target }}
+      - shell: bash
+        run: |
+          mkdir -p dist
+          cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "dist/${{ matrix.asset }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+          if-no-files-found: error
+
+  publish:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      CHANNEL: ${{ needs.version.outputs.channel }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install rsign2
+        # The tool that generated the key (`rsign generate -W`): unencrypted
+        # keys in its format are read without any password prompt.
+        run: cargo install rsign2 --locked --version 0.6.7
+
+      - name: Sign the binaries
+        env:
+          FLAIR_SIGNING_KEY: ${{ secrets.FLAIR_SIGNING_KEY }}
+        run: |
+          if [ -z "$FLAIR_SIGNING_KEY" ]; then
+            echo "::error::the FLAIR_SIGNING_KEY secret is missing"
+            exit 1
+          fi
+          umask 077
+          printf '%s\n' "$FLAIR_SIGNING_KEY" > "$RUNNER_TEMP/flair.key"
+          # The public key embedded in Flair: the signatures must verify with it.
+          public=$(sed -n 's/^pub const PUBLIC_KEY: &str = "\(.*\)";/\1/p' crates/flair-core/src/update.rs)
+          for pair in "flair-windows-x86_64.exe windows-x86_64" "flair-linux-x86_64 linux-x86_64"; do
+            set -- $pair
+            # The trusted comment binds the signature to this version and platform.
+            rsign sign -W -s "$RUNNER_TEMP/flair.key" -x "dist/$1.minisig" \
+              -t "flair $VERSION $2" "dist/$1"
+            rsign verify -P "$public" -x "dist/$1.minisig" "dist/$1"
+            grep -qx "trusted comment: flair $VERSION $2" "dist/$1.minisig"
+          done
+          rm -f "$RUNNER_TEMP/flair.key"
+
+      - name: Release notes
+        run: |
+          previous=$(gh release list --limit 1 --json tagName --jq '.[0].tagName // empty' || true)
+          if [ -n "$previous" ] && git rev-parse -q --verify "refs/tags/$previous" >/dev/null; then
+            range="$previous..HEAD"
+          else
+            range="HEAD~20..HEAD"
+          fi
+          git log --no-merges --format='%s' "$range" 2>/dev/null | head -n 30 > notes.txt || true
+          [ -s notes.txt ] || echo "Flair $VERSION" > notes.txt
+          cat notes.txt
+
+      - name: Manifest
+        run: |
+          chmod +x dist/flair-linux-x86_64
+          python3 scripts/make_manifest.py dist "$VERSION" "$CHANNEL" "$GITHUB_SHA" notes.txt
+
+      - name: Compatibility with the published updater
+        run: |
+          # This version reads its own manifest…
+          dist/flair-linux-x86_64 --check-manifest dist/manifest.json
+          # …and so does the latest published version, which will install it.
+          previous=$(gh release list --limit 1 --json tagName --jq '.[0].tagName // empty' || true)
+          if [ -n "$previous" ]; then
+            mkdir -p previous
+            if gh release download "$previous" --pattern flair-linux-x86_64 --dir previous; then
+              chmod +x previous/flair-linux-x86_64
+              previous/flair-linux-x86_64 --check-manifest dist/manifest.json
+            fi
+          fi
+
+      - name: Publish
+        run: |
+          flags=""
+          if [ "$CHANNEL" = "main" ]; then flags="--prerelease"; fi
+          {
+            echo "Flair $VERSION ($CHANNEL)"
+            echo
+            sed 's/^/- /' notes.txt
+          } > notes.md
+          gh release create "v$VERSION" \
+            dist/flair-windows-x86_64.exe dist/flair-windows-x86_64.exe.minisig \
+            dist/flair-linux-x86_64 dist/flair-linux-x86_64.minisig \
+            dist/manifest.json \
+            --title "Flair $VERSION" --notes-file notes.md --target "$GITHUB_SHA" $flags
+
+      - name: Keep the last main pre-releases
+        if: env.CHANNEL == 'main'
+        run: |
+          gh release list --limit 200 --json tagName,isPrerelease,createdAt \
+            --jq '[.[] | select(.isPrerelease)] | sort_by(.createdAt) | reverse | .[env.KEEP_MAIN_RELEASES | tonumber:] | .[].tagName' |
+          while read -r tag; do
+            echo "Deleting $tag"
+            gh release delete "$tag" --yes --cleanup-tag
+          done

@@ -110,7 +110,7 @@ impl Tray {
         autostart: bool,
         on_action: Callback,
     ) -> Result<Self, String> {
-        let runtime = dbus_runtime()?;
+        let runtime = crate::dbus::runtime()?;
         let tray = FlairTray {
             labels: labels.clone(),
             enabled,
@@ -139,29 +139,6 @@ impl Tray {
             handle.update(|tray| tray.icon = icon).await;
         });
     }
-}
-
-/// The process-wide D-Bus runtime (one thread, started on first use). It is
-/// also meant for the XDG portals of milestone 8.
-fn dbus_runtime() -> Result<runtime::Handle, String> {
-    static RUNTIME: std::sync::OnceLock<Result<runtime::Handle, String>> =
-        std::sync::OnceLock::new();
-    RUNTIME
-        .get_or_init(|| {
-            let rt = runtime::Builder::new_current_thread()
-                .enable_all()
-                .thread_name("flair-dbus")
-                .build()
-                .map_err(|e| e.to_string())?;
-            let handle = rt.handle().clone();
-            std::thread::Builder::new()
-                .name("flair-dbus".into())
-                // Drives the runtime forever; parks while there is nothing to do.
-                .spawn(move || rt.block_on(std::future::pending::<()>()))
-                .map_err(|e| e.to_string())?;
-            Ok(handle)
-        })
-        .clone()
 }
 
 pub fn icon_size() -> u32 {

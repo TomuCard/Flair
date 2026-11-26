@@ -10,11 +10,14 @@ use iced::Subscription;
 use iced::futures::channel::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use iced::futures::stream::{self, BoxStream, StreamExt};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum External {
     Show,
     Toggle,
     Quit,
+    Uninstall,
+    Reload,
+    Open(std::path::PathBuf),
     Tray(TrayAction),
 }
 

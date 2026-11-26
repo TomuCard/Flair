@@ -61,6 +61,21 @@ impl Services {
     }
 }
 
+impl Services {
+    /// Registers a new shortcut. If it fails, the old one is kept.
+    pub fn reregister_hotkey(&mut self, text: &str) {
+        match register_hotkey(text) {
+            Ok(registration) => {
+                self._hotkey = Some(registration);
+                self.hotkey_error = None;
+                crate::stats::set_hotkey(text.to_owned());
+                tracing::info!(hotkey = text, "global shortcut changed");
+            }
+            Err(e) => tracing::warn!(hotkey = text, "shortcut kept unchanged: {e}"),
+        }
+    }
+}
+
 fn register_hotkey(text: &str) -> Result<Registration, HotkeyError> {
     let parsed =
         Hotkey::parse(text).map_err(|e| HotkeyError::Failed(text.to_owned(), e.to_string()))?;
@@ -98,10 +113,10 @@ fn create_tray(config: &Config, i18n: &I18n, tokens: &Tokens) -> Result<Tray, St
         stats: i18n.t("tray-stats"),
         quit: i18n.t("tray-quit"),
     };
-    // Reindexing (milestone 6) and updates (milestone 3) do not exist yet.
+    // Reindexing comes with milestone 6.
     let enabled = tray::Enabled {
         reindex: false,
-        check_update: false,
+        check_update: true,
     };
     Tray::new(
         &labels,

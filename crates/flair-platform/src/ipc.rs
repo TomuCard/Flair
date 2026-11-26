@@ -13,31 +13,43 @@ use interprocess::local_socket::prelude::*;
 use interprocess::local_socket::{GenericNamespaced, ListenerOptions, Stream};
 
 /// Commands understood by the running instance.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     Show,
     Toggle,
     Stats,
     Quit,
+    /// Show the uninstallation screen (Windows "Installed apps").
+    Uninstall,
+    /// Re-read the configuration (after `flair --import`).
+    Reload,
+    /// Open a `.flair` file (double-click): show its import summary.
+    Open(String),
 }
 
 impl Command {
-    fn as_str(self) -> &'static str {
+    fn to_line(&self) -> String {
         match self {
-            Self::Show => "show",
-            Self::Toggle => "toggle",
-            Self::Stats => "stats",
-            Self::Quit => "quit",
+            Self::Show => "show".into(),
+            Self::Toggle => "toggle".into(),
+            Self::Stats => "stats".into(),
+            Self::Quit => "quit".into(),
+            Self::Uninstall => "uninstall".into(),
+            Self::Reload => "reload".into(),
+            Self::Open(path) => format!("open {path}"),
         }
     }
 
     fn parse(line: &str) -> Option<Self> {
-        Some(match line.trim() {
+        let line = line.trim_end_matches(['\r', '\n']);
+        Some(match line {
             "show" => Self::Show,
             "toggle" => Self::Toggle,
             "stats" => Self::Stats,
             "quit" => Self::Quit,
-            _ => return None,
+            "uninstall" => Self::Uninstall,
+            "reload" => Self::Reload,
+            other => Self::Open(other.strip_prefix("open ")?.to_owned()),
         })
     }
 }
@@ -56,7 +68,7 @@ fn socket_name() -> String {
 
 /// Sends a command to the running instance and returns its reply.
 /// Fails (`NotFound` / `ConnectionRefused`) when no instance is running.
-pub fn send(command: Command) -> io::Result<String> {
+pub fn send(command: &Command) -> io::Result<String> {
     let name = socket_name().to_ns_name::<GenericNamespaced>()?;
     let stream = Stream::connect(name)?;
     // Let the running instance bring its window to the foreground (Windows
@@ -65,7 +77,7 @@ pub fn send(command: Command) -> io::Result<String> {
     let mut stream = BufReader::new(stream);
     stream
         .get_mut()
-        .write_all(format!("{}\n", command.as_str()).as_bytes())?;
+        .write_all(format!("{}\n", command.to_line()).as_bytes())?;
     let mut reply = String::new();
     stream.read_line(&mut reply)?;
     Ok(reply.trim_end().to_owned())
@@ -127,8 +139,12 @@ mod tests {
             Command::Toggle,
             Command::Stats,
             Command::Quit,
+            Command::Uninstall,
+            Command::Reload,
+            Command::Open(r"C:\Users\me\Mon export.flair".into()),
+            Command::Open("/home/me/a b.flair".into()),
         ] {
-            assert_eq!(Command::parse(c.as_str()), Some(c));
+            assert_eq!(Command::parse(&c.to_line()), Some(c));
         }
         assert_eq!(Command::parse("toggle\n"), Some(Command::Toggle));
         assert_eq!(Command::parse("rm -rf"), None);

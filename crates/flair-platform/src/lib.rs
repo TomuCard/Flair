@@ -7,11 +7,16 @@
 
 pub mod autostart;
 pub mod console;
+#[cfg(target_os = "linux")]
+mod dbus;
+pub mod dialog;
 pub mod hotkey;
+pub mod install;
 pub mod ipc;
 pub mod memory;
 pub mod open;
 pub mod paths;
+pub mod process;
 pub mod renderer;
 pub mod theme;
 pub mod tray;

@@ -15,6 +15,7 @@ thiserror.workspace = true
 tracing.workspace = true
 
 [target.'cfg(windows)'.dependencies]
+rfd = { version = "0.18.0", default-features = false }
 # Event-driven on Windows (hidden message window). Not used on X11: its X11
 # backend polls every 50 ms, see `hotkey/x11.rs`.
 global-hotkey.workspace = true
@@ -22,6 +23,8 @@ tray-icon.workspace = true
 windows = { version = "0.62.2", features = [
     "Win32_Foundation",
     "Win32_Globalization",
+    "Win32_Security",
+    "Win32_System_Com",
     "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",
     "Win32_System_Console",
@@ -46,5 +49,6 @@ workspace = true
 # through tray-icon, which forces the async-io stack whose `blocking` pool
 # keeps a thread waking up every 500 ms forever (see `tray/linux.rs`).
 ksni.workspace = true
+rfd.workspace = true
 tokio.workspace = true
 x11rb.workspace = true
