@@ -359,6 +359,10 @@ impl Flair {
                 )];
                 self.message(rows)
             }
+            "stats" => {
+                let rows = super::stats_rows(&self.i18n, &crate::stats::snapshot());
+                self.message(rows)
+            }
             "export" => self.set_screen(Some(Screen::Export)),
             "export:all" => self.pick_export(false),
             "export:settings" => self.pick_export(true),

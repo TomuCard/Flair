@@ -81,6 +81,7 @@ Flair tourne en permanence en arrière-plan ; la fenêtre est cachée et réaffi
 | `> mise à jour annuler` / `> update rollback` | Revient à la version précédente (conservée sur le disque) |
 | `> mise à jour canal stable` / `> update channel main` | Change de canal |
 | `> version` | Version, commit, date et canal |
+| `> statistiques` / `> stats` | Mémoire, réveils, temps du dernier affichage, moteur de rendu |
 | `> exporter` / `> export` | « Tout » ou « Réglages seulement », puis boîte « Enregistrer sous » |
 | `> importer` / `> import` | « Choisir un fichier… » ou une sauvegarde automatique, résumé, puis « Tout remplacer » ou « Ajouter les thèmes et lexiques » |
 | `> annuler` / `> undo` | Revient à l'état d'avant le dernier import |

@@ -48,6 +48,14 @@ const CATALOG: &[Entry] = &[
         portable_only: false,
     },
     Entry {
+        id: "stats",
+        completion: ("statistiques", "stats"),
+        title: "cmd-stats",
+        description: Some("cmd-stats-desc"),
+        words: &["statistiques", "stats", "statistics"],
+        portable_only: false,
+    },
+    Entry {
         id: "export",
         completion: ("exporter", "export"),
         title: "cmd-export",
@@ -262,6 +270,8 @@ mod tests {
         assert_eq!(ids("mise a jour", false)[0], "update");
         assert_eq!(ids("update", false)[0], "update");
         assert_eq!(ids("export", false), ["export"]);
+        assert_eq!(ids("stats", false), ["stats"]);
+        assert_eq!(ids("statist", false), ["stats"]);
         assert_eq!(ids("exporter", false), ["export"]);
         assert_eq!(ids("désinst", false), ["uninstall"]);
         assert_eq!(ids("desinst", false), ["uninstall"]);
