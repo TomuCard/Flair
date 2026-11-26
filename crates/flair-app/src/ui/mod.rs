@@ -8,6 +8,7 @@ mod view;
 
 pub use view::INTER;
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -20,7 +21,14 @@ use iced::keyboard::{self, Key, Modifiers};
 use iced::widget::{Id, operation};
 use iced::{Event, Point, Size, Subscription, Task, event, window};
 
+use flair_core::IconSource;
+use flair_core::result::BuiltinIcon;
+use flair_platform::hotkey::HotkeyError;
+use flair_platform::tray::TrayAction;
+
 use crate::design;
+use crate::external::{self, External};
+use crate::services::Services;
 use crate::style::Palette;
 
 /// Id of the search field.
@@ -29,7 +37,14 @@ const INPUT_ID: &str = "search";
 const LIST_ID: &str = "results";
 
 pub struct Flair {
+    /// The launcher window. Kept alive (hidden) between uses, except where it
+    /// cannot be hidden (Wayland): it is then closed and reopened.
     window: Option<window::Id>,
+    /// Whether the user sees the window.
+    visible: bool,
+    services: Services,
+    config: Config,
+    config_path: PathBuf,
     i18n: Arc<I18n>,
     tokens: Tokens,
     opacity: f32,
@@ -41,8 +56,12 @@ pub struct Flair {
     selected: usize,
     hovered: Option<usize>,
     ctrl_held: bool,
-    /// Configuration problems, shown when the field is empty.
+    /// Configuration and shortcut problems, shown when the field is empty.
     notices: Vec<ResultItem>,
+    /// Information rows (statistics), shown instead of the notices until hidden.
+    info_rows: Vec<ResultItem>,
+    /// When the last show was requested, until its first frame is drawn.
+    show_requested: Option<Instant>,
 
     query_seq: u64,
     cancel: CancellationToken,
@@ -69,6 +88,10 @@ pub enum Message {
     Activate(usize),
     Frame,
     Screenshot(window::Screenshot),
+    /// Shortcut, tray menu or another `flair` process.
+    External(External),
+    /// The window manager asked to close the window (Alt+F4): hide it.
+    CloseRequested,
 }
 
 /// Which action of a result to run.
@@ -93,6 +116,11 @@ pub struct Dev {
 pub struct Init {
     pub dev: Dev,
     pub config: Config,
+    pub config_path: PathBuf,
+    /// Show the window at startup (`--show`, `--toggle`, or a notice to read).
+    pub start_visible: bool,
+    /// First start on Wayland: explain how to bind a desktop shortcut.
+    pub wayland_hint: bool,
     pub issues: Vec<ConfigIssue>,
     pub i18n: Arc<I18n>,
     pub tokens: Tokens,
@@ -101,25 +129,23 @@ pub struct Init {
 }
 
 impl Flair {
-    pub fn new(init: Init) -> (Self, Task<Message>) {
-        let notices = notices(&init.i18n, &init.issues);
-        let rows = notices
-            .iter()
-            .map(|n| design::row_height(n.subtitle.is_some()));
-        let height = if crate::platform_window::can_resize() {
-            design::window_height(rows)
-        } else {
-            design::max_window_height()
-        };
-        let (id, open) = window::open(window_settings(height));
+    pub fn new(init: Init, services: Services) -> (Self, Task<Message>) {
+        let mut notices = notices(&init.i18n, &init.issues);
+        notices.extend(hotkey_notice(&init, services.hotkey_error.as_ref()));
+        // Problems must be seen: show the window if there are any.
+        let start_visible = init.start_visible || !notices.is_empty();
         let animations = init.config.theme.animations;
-        let state = Self {
-            window: Some(id),
+        let mut state = Self {
+            window: None,
+            visible: false,
+            services,
+            config_path: init.config_path,
             i18n: init.i18n,
             tokens: init.tokens,
             #[allow(clippy::cast_possible_truncation)]
             opacity: init.config.theme.opacity as f32,
             animations,
+            config: init.config,
             provider: init.provider,
             input: String::new(),
             results: Vec::new(),
@@ -127,6 +153,8 @@ impl Flair {
             hovered: None,
             ctrl_held: false,
             notices,
+            info_rows: Vec::new(),
+            show_requested: None,
             query_seq: 0,
             cancel: CancellationToken::new(),
             scroll_offset: 0.0,
@@ -135,7 +163,15 @@ impl Flair {
             started: init.started,
             dev: init.dev,
         };
-        (state, open.map(Message::WindowOpened))
+        let task = if start_visible {
+            state.show()
+        } else if crate::platform_window::can_hide() {
+            // Create the window hidden now, so showing it later is instant.
+            state.open_window(false)
+        } else {
+            Task::none()
+        };
+        (state, task)
     }
 
     pub fn title(&self, _window: window::Id) -> String {
@@ -154,12 +190,14 @@ impl Flair {
         }
     }
 
-    /// Rows currently displayed: results, or configuration notices when empty.
+    /// Rows currently displayed: results, or information / notices when empty.
     fn rows(&self) -> &[ResultItem] {
-        if self.input.trim().is_empty() {
-            &self.notices
-        } else {
+        if !self.input.trim().is_empty() {
             &self.results
+        } else if !self.info_rows.is_empty() {
+            &self.info_rows
+        } else {
+            &self.notices
         }
     }
 
@@ -180,13 +218,13 @@ impl Flair {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::WindowOpened(id) => {
-                tracing::info!(
-                    elapsed_ms = self.started.elapsed().as_millis(),
-                    "window shown"
-                );
-                if self.animations {
-                    self.fade_started = Some(Instant::now());
+                if !self.visible || self.window != Some(id) {
+                    return Task::none(); // window created hidden, kept warm
                 }
+                tracing::info!(
+                    since_start_ms = self.started.elapsed().as_millis(),
+                    "window opened"
+                );
                 let mut tasks = vec![window::gain_focus(id), operation::focus(Id::new(INPUT_ID))];
                 if let Some(query) = self.dev.query.clone() {
                     tasks.push(self.search(query));
@@ -255,18 +293,146 @@ impl Flair {
                 }
             }
             Message::Frame => {
+                if let Some(requested) = self.show_requested.take() {
+                    let elapsed = requested.elapsed();
+                    crate::stats::record_show(elapsed);
+                    tracing::debug!(ms = elapsed.as_secs_f64() * 1000.0, "shown");
+                }
                 if self.fade() >= 1.0 {
                     self.fade_started = None;
                 }
                 Task::none()
             }
+            Message::External(event) => self.on_external(event),
+            Message::CloseRequested => self.hide(),
         }
     }
 
+    fn on_external(&mut self, event: External) -> Task<Message> {
+        match event {
+            External::Show => self.show(),
+            External::Toggle => {
+                if self.visible {
+                    self.hide()
+                } else {
+                    self.show()
+                }
+            }
+            External::Quit => iced::exit(),
+            External::Tray(action) => self.on_tray(action),
+        }
+    }
+
+    fn on_tray(&mut self, action: TrayAction) -> Task<Message> {
+        match action {
+            TrayAction::Toggle => self.on_external(External::Toggle),
+            TrayAction::Show => self.show(),
+            TrayAction::OpenConfig => {
+                open(&self.config_path);
+                Task::none()
+            }
+            TrayAction::Autostart => {
+                self.toggle_autostart();
+                Task::none()
+            }
+            TrayAction::Stats => {
+                let snapshot = crate::stats::snapshot();
+                self.info_rows = stats_rows(&self.i18n, &snapshot);
+                self.input.clear();
+                self.results.clear();
+                Task::batch([self.show(), self.resize()])
+            }
+            TrayAction::Quit => iced::exit(),
+            // Not available yet (milestones 3 and 6): disabled in the menu.
+            TrayAction::Reindex | TrayAction::CheckUpdate => Task::none(),
+        }
+    }
+
+    /// Tray "Launch at startup": register with the OS, then save the setting.
+    fn toggle_autostart(&mut self) {
+        let enabled = !self.config.autostart;
+        let result =
+            std::env::current_exe().and_then(|exe| flair_platform::autostart::set(enabled, &exe));
+        match result.map_err(|e| e.to_string()).and_then(|()| {
+            flair_core::settings::edit::set_in_file(
+                &self.config_path,
+                "autostart",
+                &toml::Value::Boolean(enabled),
+            )
+            .map_err(|e| e.to_string())
+        }) {
+            Ok(()) => {
+                self.config.autostart = enabled;
+                tracing::info!(enabled, "launch at startup changed");
+            }
+            Err(e) => tracing::error!("cannot change launch at startup: {e}"),
+        }
+        if let Some(tray) = &mut self.services.tray {
+            tray.set_autostart_checked(self.config.autostart);
+        }
+    }
+
+    /// Shows the window on the screen under the mouse, field focused.
+    fn show(&mut self) -> Task<Message> {
+        if self.visible {
+            return match self.window {
+                Some(id) => {
+                    Task::batch([window::gain_focus(id), operation::focus(Id::new(INPUT_ID))])
+                }
+                None => Task::none(),
+            };
+        }
+        self.visible = true;
+        crate::stats::set_visible(true);
+        self.show_requested = Some(Instant::now());
+        self.was_focused = false;
+        if self.animations {
+            self.fade_started = Some(Instant::now());
+        }
+        let keep = self.config.keep_last_query && !self.input.is_empty();
+        if !keep {
+            self.input.clear();
+            self.results.clear();
+            self.selected = 0;
+        }
+
+        let Some(id) = self.window else {
+            return self.open_window(true);
+        };
+        let mut tasks = Vec::new();
+        if let Some(position) = position_under_mouse() {
+            tasks.push(window::move_to(id, position));
+        }
+        tasks.push(self.resize());
+        tasks.push(window::set_mode(id, window::Mode::Windowed));
+        tasks.push(window::gain_focus(id));
+        tasks.push(operation::focus(Id::new(INPUT_ID)));
+        if keep {
+            tasks.push(operation::select_all(Id::new(INPUT_ID)));
+        }
+        Task::batch(tasks)
+    }
+
+    fn open_window(&mut self, visible: bool) -> Task<Message> {
+        let height = if crate::platform_window::can_resize() {
+            self.frame_height()
+        } else {
+            design::max_window_height()
+        };
+        let (id, open) = window::open(window_settings(height, visible));
+        self.window = Some(id);
+        open.map(Message::WindowOpened)
+    }
+
     pub fn subscription(&self) -> Subscription<Message> {
-        let mut subscriptions = vec![event::listen_with(on_event)];
-        // Frames are only requested during the fade-in, never at rest.
-        if self.fade_started.is_some() {
+        // Both sleep until an event arrives: no wake-up while hidden.
+        let mut subscriptions = vec![
+            event::listen_with(on_event),
+            external::subscription().map(Message::External),
+        ];
+        // Frames are only requested during the fade-in and right after a show
+        // (to measure it), never at rest.
+        if self.fade_started.is_some() || self.show_requested.is_some() {
             subscriptions.push(window::frames().map(|_| Message::Frame));
         }
         // Development screenshots wait for the next frame, so the view is up to date.
@@ -410,19 +576,53 @@ impl Flair {
                 };
                 Task::batch([iced::clipboard::write(text), self.hide()])
             }
-            // Milestone 1: no real launching yet (providers come in milestone 4+).
-            _ => self.hide(),
+            Action::Open { path } => {
+                open(&path);
+                self.hide()
+            }
+            Action::RevealInFolder { path } => {
+                open(path.parent().unwrap_or(&path));
+                self.hide()
+            }
+            Action::OpenUrl { url } => {
+                open(std::path::Path::new(&url));
+                self.hide()
+            }
+            // Launching applications and system commands: milestones 4 and 7.
+            Action::Launch { .. } | Action::SystemCommand(_) => self.hide(),
         }
     }
 
-    /// Hides the window. Milestone 1 has no resident process yet (tray icon
-    /// and IPC come with milestone 2), so hiding quits.
+    /// Hides the window. Flair keeps running in the background.
     fn hide(&mut self) -> Task<Message> {
+        if !self.visible {
+            return Task::none();
+        }
         tracing::debug!("hide");
+        self.visible = false;
+        crate::stats::set_visible(false);
         self.cancel.cancel();
-        match self.window.take() {
-            Some(id) => window::close(id).chain(iced::exit()),
-            None => Task::none(),
+        self.show_requested = None;
+        self.fade_started = None;
+        self.info_rows.clear();
+        self.hovered = None;
+        self.ctrl_held = false;
+        if !self.config.keep_last_query {
+            self.input.clear();
+            self.results.clear();
+        }
+        // Development screenshots: one capture, then quit.
+        if self.dev.screenshot.is_some() {
+            return iced::exit();
+        }
+        let Some(id) = self.window else {
+            return Task::none();
+        };
+        if crate::platform_window::can_hide() {
+            window::set_mode(id, window::Mode::Hidden)
+        } else {
+            self.window = None;
+            window::close(id)
         }
     }
 
@@ -445,6 +645,7 @@ impl Flair {
 
 /// Keyboard and window events, filtered without capturing state.
 fn on_event(event: Event, _status: event::Status, _window: window::Id) -> Option<Message> {
+    crate::stats::count_wakeup();
     match event {
         Event::Keyboard(keyboard::Event::KeyPressed {
             key,
@@ -457,6 +658,7 @@ fn on_event(event: Event, _status: event::Status, _window: window::Id) -> Option
         }
         Event::Window(window::Event::Focused) => Some(Message::WindowFocused),
         Event::Window(window::Event::Unfocused) => Some(Message::WindowUnfocused),
+        Event::Window(window::Event::CloseRequested) => Some(Message::CloseRequested),
         _ => None,
     }
 }
@@ -482,8 +684,6 @@ fn digit(physical: Physical) -> Option<usize> {
 
 /// Rows explaining configuration problems (shown while the field is empty).
 fn notices(i18n: &I18n, issues: &[ConfigIssue]) -> Vec<ResultItem> {
-    use flair_core::IconSource;
-    use flair_core::result::BuiltinIcon;
     issues
         .iter()
         .enumerate()
@@ -513,18 +713,112 @@ fn notices(i18n: &I18n, issues: &[ConfigIssue]) -> Vec<ResultItem> {
         .collect()
 }
 
-fn window_settings(height: f32) -> window::Settings {
+/// Opens a file, folder or URL with the default application; errors are logged.
+fn open(path: &std::path::Path) {
+    if let Err(e) = flair_platform::open::open_path(path) {
+        tracing::error!(path = %path.display(), "cannot open: {e}");
+    }
+}
+
+/// Top-left corner placing the window centered, at 25 % of the height of the
+/// screen under the mouse (logical coordinates). `None` where unknown.
+fn position_under_mouse() -> Option<Point> {
+    let area = flair_platform::window::cursor_work_area()?;
+    #[allow(clippy::cast_precision_loss)]
+    let (x, y, w, h) = (
+        area.x as f32,
+        area.y as f32,
+        area.width as f32,
+        area.height as f32,
+    );
+    let width = design::WINDOW_WIDTH * area.scale;
+    Some(Point::new(
+        (x + (w - width) / 2.0) / area.scale,
+        (y + h * design::WINDOW_TOP_FRACTION) / area.scale,
+    ))
+}
+
+/// Row explaining why the global shortcut is not available, if needed.
+fn hotkey_notice(init: &Init, error: Option<&HotkeyError>) -> Option<ResultItem> {
+    let i18n = &init.i18n;
+    let hotkey = init.config.hotkey.as_str();
+    let open_config = Action::Open {
+        path: init.config_path.clone(),
+    };
+    let (title, subtitle, action) = match error? {
+        HotkeyError::Taken(_) => (
+            i18n.t_args("hotkey-taken-title", &[("hotkey", hotkey)]),
+            i18n.t("hotkey-taken-detail"),
+            open_config,
+        ),
+        HotkeyError::Failed(_, e) => (
+            i18n.t_args("hotkey-failed-title", &[("hotkey", hotkey)]),
+            i18n.t_args("hotkey-failed-detail", &[("error", e)]),
+            open_config,
+        ),
+        HotkeyError::Unsupported if init.wayland_hint => (
+            i18n.t("hotkey-wayland-title"),
+            i18n.t("hotkey-wayland-detail"),
+            Action::CopyToClipboard {
+                text: toggle_command(),
+            },
+        ),
+        HotkeyError::Unsupported => return None,
+    };
+    Some(ResultItem {
+        id: "notice:hotkey".into(),
+        title,
+        subtitle: Some(subtitle),
+        icon: IconSource::Builtin(BuiltinIcon::Settings),
+        score: 0.0,
+        match_indices: vec![],
+        actions: vec![action],
+        provider: ProviderKind::Command,
+    })
+}
+
+/// Command to bind to a desktop shortcut: `<path to flair> --toggle`.
+fn toggle_command() -> String {
+    let exe = std::env::current_exe()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| "flair".into());
+    if exe.contains(' ') {
+        format!("\"{exe}\" --toggle")
+    } else {
+        format!("{exe} --toggle")
+    }
+}
+
+/// Statistics as information rows (title = value, subtitle = label).
+fn stats_rows(i18n: &I18n, snapshot: &crate::stats::Snapshot) -> Vec<ResultItem> {
+    crate::stats::lines(snapshot, i18n)
+        .into_iter()
+        .enumerate()
+        .map(|(i, (label, value))| ResultItem {
+            id: format!("stats:{i}"),
+            title: value.clone(),
+            subtitle: Some(label),
+            icon: IconSource::Builtin(BuiltinIcon::Settings),
+            score: 0.0,
+            match_indices: vec![],
+            actions: vec![Action::CopyToClipboard { text: value }],
+            provider: ProviderKind::Command,
+        })
+        .collect()
+}
+
+fn window_settings(height: f32, visible: bool) -> window::Settings {
     window::Settings {
         size: Size::new(design::WINDOW_WIDTH, height),
-        // Centered horizontally, at 25 % of the screen height. Milestone 2
-        // will use the screen under the mouse.
+        // Centered horizontally, at 25 % of the height of the primary screen.
+        // Moved to the screen under the mouse when shown (where supported).
         position: window::Position::SpecificWith(|window, monitor| {
             Point::new(
                 ((monitor.width - window.width) / 2.0).max(0.0),
                 monitor.height * design::WINDOW_TOP_FRACTION,
             )
         }),
-        visible: true,
+        visible,
         resizable: crate::platform_window::RESIZABLE,
         minimizable: false,
         decorations: false,
@@ -548,13 +842,18 @@ mod tests {
         let init = Init {
             dev: Dev::default(),
             config: Config::default(),
+            config_path: PathBuf::from("config.toml"),
+            start_visible: true,
+            wayland_hint: false,
             issues: vec![],
             i18n: Arc::clone(&i18n),
             tokens: builtin::dark().tokens(),
             provider: Arc::new(MockProvider::new(i18n, 8)),
             started: Instant::now(),
         };
-        Flair::new(init).0
+        let app = Flair::new(init, Services::none()).0;
+        assert!(app.visible);
+        app
     }
 
     /// Types `text` and delivers the results synchronously.
@@ -638,9 +937,9 @@ mod tests {
         named(&mut app, Named::Escape, Code::Escape);
         assert!(app.input.is_empty());
         assert!(app.results.is_empty());
-        assert!(app.window.is_some(), "first Escape only clears");
+        assert!(app.visible, "first Escape only clears");
         named(&mut app, Named::Escape, Code::Escape);
-        assert!(app.window.is_none(), "second Escape hides");
+        assert!(!app.visible, "second Escape hides");
     }
 
     #[test]
@@ -654,14 +953,14 @@ mod tests {
             Code::Digit9,
             Modifiers::CTRL,
         );
-        assert!(app.window.is_some(), "no 9th result: nothing happens");
+        assert!(app.visible, "no 9th result: nothing happens");
         press(
             &mut app,
             Key::Character("é".into()),
             Code::Digit2,
             Modifiers::CTRL,
         );
-        assert!(app.window.is_none(), "2nd result launched, window hidden");
+        assert!(!app.visible, "2nd result launched, window hidden");
     }
 
     #[test]
@@ -698,5 +997,84 @@ mod tests {
         let rows = notices(&i18n, &issues);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].subtitle.as_deref(), Some("réglage inconnu : foo"));
+    }
+
+    #[test]
+    fn toggle_shows_and_hides_without_quitting() {
+        let mut app = app();
+        type_text(&mut app, "vsc");
+        let _ = app.update(Message::External(External::Toggle));
+        assert!(!app.visible);
+        assert!(app.input.is_empty(), "field emptied for the next show");
+        let _ = app.update(Message::External(External::Toggle));
+        assert!(app.visible);
+        let _ = app.update(Message::External(External::Show));
+        assert!(app.visible, "show on a visible window keeps it");
+    }
+
+    #[test]
+    fn keep_last_query_survives_hiding() {
+        let mut app = app();
+        app.config.keep_last_query = true;
+        type_text(&mut app, "vsc");
+        let _ = app.update(Message::CloseRequested);
+        assert!(!app.visible);
+        let _ = app.update(Message::External(External::Show));
+        assert_eq!(app.input, "vsc");
+    }
+
+    #[test]
+    fn focus_loss_hides_only_after_a_first_focus() {
+        let mut app = app();
+        let _ = app.update(Message::WindowUnfocused);
+        assert!(app.visible, "spurious unfocus while mapping");
+        let _ = app.update(Message::WindowFocused);
+        let _ = app.update(Message::WindowUnfocused);
+        assert!(!app.visible);
+    }
+
+    #[test]
+    fn tray_statistics_show_information_rows() {
+        let mut app = app();
+        let _ = app.update(Message::External(External::Tray(TrayAction::Stats)));
+        assert!(app.visible);
+        assert!(
+            app.rows()
+                .iter()
+                .any(|r| r.subtitle.as_deref() == Some("Réveils depuis le démarrage"))
+        );
+        let _ = app.update(Message::CloseRequested);
+        assert!(app.info_rows.is_empty(), "cleared when hidden");
+    }
+
+    #[test]
+    fn hotkey_problems_become_notices_and_show_the_window() {
+        let i18n = Arc::new(I18n::new(Lang::Fr));
+        let init = Init {
+            dev: Dev::default(),
+            config: Config::default(),
+            config_path: PathBuf::from("config.toml"),
+            start_visible: false,
+            wayland_hint: false,
+            issues: vec![],
+            i18n: Arc::clone(&i18n),
+            tokens: builtin::dark().tokens(),
+            provider: Arc::new(MockProvider::new(i18n, 8)),
+            started: Instant::now(),
+        };
+        let mut services = Services::none();
+        services.hotkey_error = Some(HotkeyError::Taken("Alt+Space".into()));
+        let app = Flair::new(init.clone(), services).0;
+        assert!(app.visible, "a problem to read opens the window");
+        assert_eq!(app.notices.len(), 1);
+        assert_eq!(app.notices[0].title, "Raccourci Alt+Space indisponible");
+        assert!(matches!(app.notices[0].actions[0], Action::Open { .. }));
+
+        // Wayland without the first-start hint: nothing to show, stays hidden.
+        let mut services = Services::none();
+        services.hotkey_error = Some(HotkeyError::Unsupported);
+        let app = Flair::new(init, services).0;
+        assert!(!app.visible);
+        assert!(app.notices.is_empty());
     }
 }

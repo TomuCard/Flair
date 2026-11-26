@@ -13,6 +13,7 @@ serde.workspace = true
 sys-locale.workspace = true
 thiserror.workspace = true
 toml.workspace = true
+toml_edit.workspace = true
 tracing.workspace = true
 unic-langid.workspace = true
 

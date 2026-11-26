@@ -42,3 +42,36 @@ value-invalid-language = code de langue invalide : { $value }
 value-invalid-hotkey = raccourci invalide : { $value }
 value-invalid-color = couleur invalide : { $value } (attendu #RGB ou #RRGGBB)
 value-invalid-web-engine = moteur de recherche invalide : { $value } (il faut keyword, name et une url contenant {"{query}"})
+
+tray-tooltip = Flair ({ $hotkey })
+tray-show = Afficher
+tray-reindex = Réindexer
+tray-open-config = Ouvrir la configuration
+tray-check-update = Rechercher une mise à jour
+tray-autostart = Lancer au démarrage
+tray-stats = Statistiques
+tray-quit = Quitter
+
+hotkey-taken-title = Raccourci { $hotkey } indisponible
+hotkey-taken-detail = Une autre application l'utilise déjà. Entrée : ouvrir la configuration pour changer « hotkey ».
+hotkey-failed-title = Raccourci { $hotkey } non enregistré
+hotkey-failed-detail = { $error }. Entrée : ouvrir la configuration.
+hotkey-wayland-title = Wayland : liez un raccourci du bureau à « flair --toggle »
+hotkey-wayland-detail = Les applications ne peuvent pas capturer de raccourci global sous Wayland. Entrée : copier la commande.
+
+stats-title = Statistiques de Flair
+stats-version = Version
+stats-uptime = Lancé depuis
+stats-ram = Mémoire utilisée
+stats-index-size = Taille de l'index (fichier / RAM)
+stats-index-entries = Entrées de l'index
+stats-watched = Dossiers surveillés
+stats-wakeups = Réveils depuis le démarrage
+stats-last-show = Dernier affichage
+stats-renderer = Moteur de rendu
+stats-hotkey = Raccourci global
+stats-tray = Icône de notification
+stats-none = —
+stats-yes = oui
+stats-no = non
+not-running = Flair n'est pas lancé.

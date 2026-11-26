@@ -2,6 +2,7 @@
 //! generation of the commented default `config.toml`.
 
 pub mod config;
+pub mod edit;
 pub mod generate;
 pub mod hotkey;
 pub mod registry;

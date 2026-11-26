@@ -14,6 +14,11 @@ pub fn fonts() -> [&'static [u8]; 4] {
     [INTER_REGULAR, INTER_MEDIUM, INTER_SEMIBOLD, JETBRAINS_MONO]
 }
 
+/// Logo sources (single color, `currentColor`), for rendering outside Iced (tray).
+pub const LOGO_SVG: &str = include_str!("../../../assets/icons/flair.svg");
+/// Simplified logo for 16 px.
+pub const LOGO_TINY_SVG: &str = include_str!("../../../assets/icons/flair-tiny.svg");
+
 macro_rules! svg_handle {
     ($name:ident, $path:literal) => {
         static $name: LazyLock<svg::Handle> =

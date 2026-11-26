@@ -42,3 +42,36 @@ value-invalid-language = invalid language code: { $value }
 value-invalid-hotkey = invalid shortcut: { $value }
 value-invalid-color = invalid color: { $value } (expected #RGB or #RRGGBB)
 value-invalid-web-engine = invalid search engine: { $value } (needs keyword, name and a url containing {"{query}"})
+
+tray-tooltip = Flair ({ $hotkey })
+tray-show = Show
+tray-reindex = Reindex
+tray-open-config = Open configuration
+tray-check-update = Check for updates
+tray-autostart = Launch at startup
+tray-stats = Statistics
+tray-quit = Quit
+
+hotkey-taken-title = Shortcut { $hotkey } unavailable
+hotkey-taken-detail = Another application already uses it. Enter: open the configuration to change "hotkey".
+hotkey-failed-title = Shortcut { $hotkey } not registered
+hotkey-failed-detail = { $error }. Enter: open the configuration.
+hotkey-wayland-title = Wayland: bind a desktop shortcut to "flair --toggle"
+hotkey-wayland-detail = Applications cannot grab global shortcuts on Wayland. Enter: copy the command.
+
+stats-title = Flair statistics
+stats-version = Version
+stats-uptime = Running for
+stats-ram = Memory used
+stats-index-size = Index size (file / RAM)
+stats-index-entries = Index entries
+stats-watched = Watched folders
+stats-wakeups = Wake-ups since start
+stats-last-show = Last show
+stats-renderer = Renderer
+stats-hotkey = Global shortcut
+stats-tray = Tray icon
+stats-none = —
+stats-yes = yes
+stats-no = no
+not-running = Flair is not running.

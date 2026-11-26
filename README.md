@@ -6,7 +6,7 @@ Launcher clavier façon Spotlight / Raycast / PowerToys Run, en Rust, pour **Win
 |---|---|---|
 | ![](docs/screenshots/dark-en-apps.png) | ![](docs/screenshots/dark-en-calc.png) | ![](docs/screenshots/light-fr-apps.png) |
 
-> **État : jalon 1 (squelette).** Fenêtre, thèmes, configuration, traductions et navigation au clavier sont en place, avec des **résultats factices**. Les vraies sources (applications, calcul, fichiers, web, système) arrivent aux jalons 4 à 7. Le cahier des charges complet est dans [`PROMPT.md`](PROMPT.md).
+> **État : jalon 2 (afficher et cacher).** Flair est résident : icône de notification, raccourci global (Windows et X11), instance unique pilotable par `flair --toggle`, aucun réveil quand la fenêtre est cachée, et `flair --stats`. Les résultats sont encore **factices** : les vraies sources (applications, calcul, fichiers, web, système) arrivent aux jalons 4 à 7. Le cahier des charges complet est dans [`PROMPT.md`](PROMPT.md).
 
 ## Compiler et lancer
 
@@ -20,10 +20,10 @@ cargo build --release       # optimisé (LTO fat, binaire strippé)
 cargo run -p flair-app -- --show
 ```
 
-`--show` affiche la fenêtre immédiatement. Au jalon 1, Flair n'est pas encore résident : `Échap` sur un champ vide, la perte du focus ou le lancement d'un résultat **ferment** l'application. Le masquage et le réaffichage via le raccourci global arrivent au jalon 2.
+Dépendances d'exécution sous Linux (déjà présentes sur un bureau) : `libxkbcommon` (+ `libxkbcommon-x11` sous X11), un serveur D-Bus de session pour l'icône de notification. Aucune bibliothèque système n'est nécessaire pour compiler.
 
 **Sous WSL2 (WSLg)** :
-- le raccourci global ne fonctionne pas (Windows intercepte le clavier) : utiliser `--show` ;
+- WSLg est une session Wayland : le raccourci global n'y existe pas. Utiliser `flair --toggle` (ou `--show`) depuis un terminal ;
 - WSLg n'expose pas de pilote Vulkan matériel, et `wgpu` y reste bloqué à la création de la surface. Avec `renderer = "auto"`, Flair détecte WSL et choisit le rendu logiciel (`tiny-skia`) : la fenêtre s'affiche en ~75 ms (build debug) ;
 - si la fenêtre ne s'ouvre pas (« NoCompositor »), lancer avec `XDG_RUNTIME_DIR=/mnt/wslg/runtime-dir`.
 
@@ -44,6 +44,51 @@ Puis lancer le `.exe` depuis WSL ou après l'avoir copié sous `C:\`. La CRT est
 cargo build --release -p flair-app
 ```
 
+## Utilisation
+
+Flair tourne en permanence en arrière-plan ; la fenêtre est cachée et réaffichée, jamais relancée.
+
+| Commande | Effet |
+|---|---|
+| `flair` | Lance Flair et affiche la fenêtre ; si Flair tourne déjà, affiche sa fenêtre |
+| `flair --background` | Lance Flair sans afficher la fenêtre (utilisé par « Lancer au démarrage ») |
+| `flair --toggle` | Affiche ou cache la fenêtre de l'instance lancée (à lier à un raccourci du bureau sous Wayland) |
+| `flair --show` | Affiche la fenêtre |
+| `flair --stats` | Statistiques de l'instance lancée (mémoire, réveils, temps du dernier affichage, moteur de rendu…) |
+| `flair --quit` | Ferme l'instance lancée |
+
+Une seule instance tourne à la fois : un second `flair` envoie sa commande à l'instance existante (named pipe sous Windows, socket Unix abstraite sous Linux, crate `interprocess`) puis quitte.
+
+**Raccourci global** (`hotkey`, `Alt+Space` par défaut) :
+- Windows : `global-hotkey` (`RegisterHotKey`) ;
+- X11 : implémentation propre avec `x11rb` (`XGrabKey` sur la fenêtre racine, thread bloqué sur la connexion X). La crate `global-hotkey` n'est **pas** utilisée sous X11 : sa boucle interroge le serveur X toutes les 50 ms, soit 20 réveils par seconde en permanence ;
+- Wayland : impossible sans le portail GlobalShortcuts (jalon 8). Au premier lancement, Flair explique comment lier un raccourci du bureau à `flair --toggle`.
+
+Si le raccourci est déjà pris par une autre application, Flair démarre quand même et l'explique dans sa fenêtre (`Entrée` ouvre la configuration).
+
+**Icône de notification** : Afficher, Réindexer (jalon 6), Ouvrir la configuration, Rechercher une mise à jour (jalon 3), Lancer au démarrage, Statistiques, Quitter. Un clic gauche affiche ou cache la fenêtre. L'icône est le logo rendu à l'exécution (`resvg`) dans la couleur de la barre des tâches (`SystemUsesLightTheme` sous Windows).
+- Windows : `tray-icon` ;
+- Linux : StatusNotifierItem via `ksni` sur un runtime Tokio d'un seul thread. Le backend KSNI de `tray-icon` impose la pile `async-io`, dont le pool `blocking` garde un thread qui se réveille toutes les 500 ms pour toujours : rejeté pour la même raison que ci-dessus. Sous GNOME, l'icône demande l'extension « AppIndicator ».
+
+## Sobriété : mesures
+
+Mesuré sous WSLg (Wayland, rendu logiciel), build release :
+
+| Mesure | Résultat | Objectif |
+|---|---|---|
+| Affichage de la fenêtre (raccourci → première image) | 12 à 15 ms | < 50 ms |
+| Premier affichage au lancement (démarrage du processus compris) | 17 à 20 ms | — |
+| RAM fenêtre cachée, sans index | 24 Mo | < 40 Mo |
+| Réveils en 30 s fenêtre cachée (compteur interne) | 0 | 0 |
+| Changements de contexte en 30 s, tous threads confondus | 0 | 0 |
+| Temps CPU consommé en 30 s fenêtre cachée | 0 | 0 |
+
+Le compteur de réveils (`flair --stats`) compte chaque événement traité : fenêtre, clavier, souris, raccourci, menu, IPC. Interroger `--stats` ne compte pas comme un réveil.
+
+**Vérifier soi-même** :
+- Linux : `pidstat -w -t -p $(pgrep -x flair) 5` (aucun `cswch/s` quand Flair est caché), `powertop` (Flair absent de la liste des réveils), et `flair --stats` à une heure d'écart ;
+- Windows : Process Explorer, propriétés de `flair.exe`, onglet *Threads* : la colonne « Context Switch Delta » doit rester à 0 fenêtre cachée ; onglet *Performance* : « Private Bytes ».
+
 ## Qualité
 
 ```bash
@@ -60,7 +105,8 @@ La CI (GitHub Actions, `.github/workflows/ci.yml`) lance `fmt`, `clippy` et `tes
 crates/
 ├── flair-core/       types, trait Provider, registre des réglages, config, thèmes, i18n (sans UI)
 ├── flair-providers/  sources de résultats (jalons 4 à 7)
-├── flair-platform/   code propre à l'OS : chemins, choix du moteur de rendu (seul crate avec `unsafe`)
+├── flair-platform/   code propre à l'OS : chemins, raccourci global, icône de notification, IPC,
+│                     démarrage auto, mémoire, écran sous la souris (seul crate avec `unsafe`)
 └── flair-app/        binaire `flair` : interface Iced, logs, lancement
 assets/
 ├── fonts/            Inter et JetBrains Mono (OFL)
@@ -132,16 +178,24 @@ Réglages (table générée depuis le registre, `UPDATE_README=1 cargo test -p f
 | `web` | `g, ddg, wiki, yt` | Mots-clés et adresses des moteurs de recherche ({query} = la recherche) |
 <!-- settings:end -->
 
-## Limitations connues (jalon 1)
+## Limitations connues
 
-- **Pas encore résident** : cacher = quitter, jusqu'au jalon 2 (icône de notification, IPC, raccourci global).
-- **Position** : centrée à 25 % de la hauteur de l'écran *principal*. L'écran sous la souris viendra avec le code plateforme du jalon 2. Sous Wayland, le positionnement libre est impossible sans layer-shell (jalon 8).
+- **Position** : sous Windows, la fenêtre apparaît sur l'écran sous la souris. Sous Linux, elle reste sur l'écran principal (X11 : à faire ; Wayland : impossible sans layer-shell, jalon 8).
+- **Wayland, masquage** : winit ne sait pas cacher une fenêtre sous Wayland. Flair la ferme et en ouvre une nouvelle à l'affichage suivant (12 à 15 ms mesurés). Sans portail XDG (WSLg), le premier affichage attend 100 ms un portail qui ne répond pas (`sctk_adwaita`, imposé par Iced).
+- **Fenêtre Linux** : elle apparaît dans la barre des tâches sous Linux (Iced n'expose pas cet attribut) ; layer-shell (jalon 8) réglera ça sur KDE et wlroots.
 - **Wayland, hauteur de la fenêtre** : winit applique un redimensionnement demandé par l'application sans envoyer d'événement `Resized`, et Iced ne refait alors pas sa mise en page. Sous Wayland, la fenêtre transparente garde donc sa hauteur maximale et seul le cadre visible change de taille. Sous Windows et X11, la fenêtre est redimensionnée normalement.
 - **Ombre** : sous Windows, l'ombre et les coins arrondis sont ceux de DWM (`undecorated_shadow`). Sous Linux, l'ombre est dessinée dans la partie transparente de la fenêtre, donc seulement sous Wayland pour l'instant.
 - **Curseur du champ** : Iced 0.14 dessine le curseur avec la couleur du texte. La spec le veut en couleur d'accent, ce qui demande un petit widget dédié (à faire).
 - **Recherche factice** : la correspondance floue du jalon 1 est volontairement simple. `nucleo-matcher` et la frecency arrivent au jalon 4.
 
 ## Développement
+
+Tests d'intégration qui demandent un vrai serveur X (raccourci global simulé par XTEST) :
+
+```bash
+cargo test -p flair-platform --test x11_hotkey -- --ignored
+cargo run -p flair-platform --example x11_press -- alt space   # simule Alt+Espace
+```
 
 Options cachées utiles pour vérifier l'interface sans clavier :
 

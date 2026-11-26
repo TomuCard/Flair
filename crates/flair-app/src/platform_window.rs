@@ -41,3 +41,10 @@ pub const RESIZABLE: bool = cfg!(not(windows));
 pub fn can_resize() -> bool {
     !(cfg!(target_os = "linux") && std::env::var_os("WAYLAND_DISPLAY").is_some())
 }
+
+/// Whether the window can be hidden and shown again. winit cannot hide a
+/// window on Wayland (`set_visible` is a no-op there): Flair then closes the
+/// window and opens a new one on the next show.
+pub fn can_hide() -> bool {
+    can_resize()
+}
