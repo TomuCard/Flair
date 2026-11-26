@@ -28,6 +28,7 @@ unic-langid.workspace = true
 test-support = ["dep:minisign"]
 
 [dev-dependencies]
+minisign = "0.10.0"
 fluent-syntax = "0.12"
 proptest.workspace = true
 

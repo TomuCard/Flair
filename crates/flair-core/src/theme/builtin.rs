@@ -10,7 +10,8 @@ pub fn light() -> Theme {
         name: LIGHT_NAME.into(),
         background: Color::rgb8(0xFA, 0xFA, 0xF9),
         foreground: Color::rgb8(0x1C, 0x1B, 0x1A),
-        accent: Some(Color::rgb8(0xB0, 0x3A, 0x0A)),
+        // Flair purple (#AD50D4) darkened in OKLCH to reach 5.8:1 on the background.
+        accent: Some(Color::rgb8(0x93, 0x34, 0xB9)),
     }
 }
 
@@ -19,7 +20,8 @@ pub fn dark() -> Theme {
         name: DARK_NAME.into(),
         background: Color::rgb8(0x16, 0x16, 0x15),
         foreground: Color::rgb8(0xEC, 0xEB, 0xE8),
-        accent: Some(Color::rgb8(0xFB, 0x92, 0x3C)),
+        // Flair purple (#AD50D4) lightened in OKLCH to reach 5.8:1 on the background.
+        accent: Some(Color::rgb8(0xC7, 0x6A, 0xEF)),
     }
 }
 

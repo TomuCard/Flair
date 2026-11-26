@@ -10,9 +10,10 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Fixed application icon color (orange "braise"): readable on white (3.35:1)
-/// and on a dark taskbar (4.86:1).
-const APP_ICON_COLOR: &str = "#E06A28";
+/// Fixed application icon color, Flair's purple: readable on white (4.12:1)
+/// and on a dark taskbar (3.77:1 on #202020), above the 3:1 recommended for
+/// graphical objects. Keep in sync with `src/assets.rs`.
+const APP_ICON_COLOR: &str = "#AD50D4";
 
 fn main() {
     for var in [

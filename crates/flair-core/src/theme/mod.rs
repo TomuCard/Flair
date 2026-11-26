@@ -328,6 +328,22 @@ mod tests {
     }
 
     #[test]
+    fn builtin_accents_are_the_flair_purple() {
+        // Same hue as the application color #AD50D4, lightness adjusted.
+        let hue = |c: Color| c.to_oklch().hue.into_positive_degrees();
+        let brand = hue(Color::rgb8(0xAD, 0x50, 0xD4));
+        for theme in builtin::all() {
+            let accent = theme.accent.expect("accent");
+            assert!(
+                (hue(accent) - brand).abs() < 3.0,
+                "{}: {}",
+                theme.name,
+                accent
+            );
+        }
+    }
+
+    #[test]
     fn builtin_contrasts_match_the_spec() {
         // Spec: text ≥ 15.2, accent ≥ 5.8 on background and ≥ 5 on selection,
         // secondary ≥ 5.2, muted ≥ 3.3. The spec values are rounded: the dark
