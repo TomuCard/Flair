@@ -165,16 +165,20 @@ pub struct Init {
 
 impl Flair {
     pub fn new(init: Init, services: Services) -> (Self, Task<Message>) {
-        let mut notices: Vec<ResultItem> = init
+        // One-off messages (installed, updated…): shown once, gone when hidden.
+        let messages: Vec<ResultItem> = init
             .messages
             .iter()
             .map(|m| crate::commands::info(m.clone(), None))
             .collect();
-        notices.extend(notices_for(&init.i18n, &init.issues));
+        // Lasting problems: shown whenever the field is empty, until fixed.
+        let mut notices = notices_for(&init.i18n, &init.issues);
         notices.extend(hotkey_notice(&init, services.hotkey_error.as_ref()));
-        // Problems must be seen: show the window if there are any.
-        let start_visible =
-            init.start_visible || !notices.is_empty() || init.initial != Initial::Search;
+        // Problems and messages must be seen: show the window if there are any.
+        let start_visible = init.start_visible
+            || !notices.is_empty()
+            || !messages.is_empty()
+            || init.initial != Initial::Search;
         let update_files = updater::Files::new(&init.paths.data_dir);
         let mut state = Self {
             window: None,
@@ -200,7 +204,7 @@ impl Flair {
             hovered: None,
             ctrl_held: false,
             notices,
-            info_rows: Vec::new(),
+            info_rows: messages,
             show_requested: None,
             query_seq: 0,
             cancel: CancellationToken::new(),
@@ -1141,6 +1145,34 @@ mod tests {
         assert!(
             matches!(&app.results[0].actions[0], Action::Internal { command } if command == "version")
         );
+    }
+
+    #[test]
+    fn startup_messages_are_shown_once() {
+        let i18n = Arc::new(I18n::new(Lang::En));
+        let init = Init {
+            dev: Dev::default(),
+            config: Config::default(),
+            config_path: PathBuf::from("config.toml"),
+            start_visible: false,
+            wayland_hint: false,
+            paths: flair_platform::paths::Paths::rooted(
+                &std::env::temp_dir().join("flair-ui-tests"),
+            ),
+            initial: Initial::Search,
+            messages: vec!["Flair is installed".into()],
+            issues: vec![],
+            i18n: Arc::clone(&i18n),
+            tokens: builtin::dark().tokens(),
+            provider: Arc::new(MockProvider::new(i18n, 8)),
+            started: Instant::now(),
+        };
+        let mut app = Flair::new(init, Services::none()).0;
+        assert!(app.visible, "a message opens the window");
+        assert_eq!(app.rows()[0].title, "Flair is installed");
+        let _ = app.update(Message::CloseRequested);
+        let _ = app.update(Message::External(External::Show));
+        assert!(app.rows().is_empty(), "not shown again");
     }
 
     #[test]
