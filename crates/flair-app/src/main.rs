@@ -101,7 +101,7 @@ fn run(cli: Cli, started: Instant) -> anyhow::Result<ExitCode> {
             Ok(reply) => return Ok(client_output(command, &reply, &paths)),
             Err(e) => tracing::debug!("no running instance: {e}"),
         }
-        if matches!(command, Command::Stats | Command::Quit) {
+        if cli.stats || cli.quit {
             flair_platform::console::attach_parent();
             let i18n = I18n::new(ui_lang(&paths));
             eprintln!("{}", i18n.t("not-running"));

@@ -16,7 +16,7 @@ const MAX_LOG_FILES: usize = 7;
 pub fn init(log_dir: &Path, level: &str) -> Option<WorkerGuard> {
     let filter = EnvFilter::try_from_env("FLAIR_LOG").unwrap_or_else(|_| {
         // Quiet dependencies (wgpu is very verbose), keep Flair's own level.
-        EnvFilter::new(format!("warn,sctk_adwaita=off,flair={level},flair_core={level},flair_platform={level},flair_providers={level}"))
+        EnvFilter::new(format!("warn,sctk_adwaita=off,fontdb=error,flair={level},flair_core={level},flair_platform={level},flair_providers={level}"))
     });
 
     // The appender prunes old files at startup: the directory must exist.

@@ -72,11 +72,11 @@ Si le raccourci est déjà pris par une autre application, Flair démarre quand 
 
 ## Sobriété : mesures
 
-Mesuré sous WSLg (Wayland, rendu logiciel), build release :
+Mesuré sous WSLg (Wayland et X11 via XWayland, rendu logiciel), build release :
 
 | Mesure | Résultat | Objectif |
 |---|---|---|
-| Affichage de la fenêtre (raccourci → première image) | 12 à 15 ms | < 50 ms |
+| Affichage de la fenêtre (raccourci → première image) | X11 : 2,6 à 4,4 ms (fenêtre gardée chaude) ; Wayland : 12 à 15 ms (fenêtre recréée) | < 50 ms |
 | Premier affichage au lancement (démarrage du processus compris) | 17 à 20 ms | — |
 | RAM fenêtre cachée, sans index | 24 Mo | < 40 Mo |
 | Réveils en 30 s fenêtre cachée (compteur interne) | 0 | 0 |

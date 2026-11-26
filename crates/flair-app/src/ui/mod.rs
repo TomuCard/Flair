@@ -309,6 +309,9 @@ impl Flair {
     }
 
     fn on_external(&mut self, event: External) -> Task<Message> {
+        // Rare events, worth a line in the log (helps diagnosing the tray
+        // and the global shortcut on a user's machine).
+        tracing::info!(?event, visible = self.visible, "external event");
         match event {
             External::Show => self.show(),
             External::Toggle => {

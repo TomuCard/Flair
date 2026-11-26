@@ -50,6 +50,10 @@ fn main() {
         let _ = conn.xtest_fake_input(3, c, 0, x11rb::NONE, 0, 0, 0);
     }
     let _ = conn.flush();
+    // XWayland processes fake input asynchronously: closing the connection
+    // right away can drop the events. Wait for a round trip, then a moment.
+    let _ = conn.get_input_focus().map(|c| c.reply());
+    std::thread::sleep(std::time::Duration::from_millis(100));
 }
 
 #[cfg(not(target_os = "linux"))]

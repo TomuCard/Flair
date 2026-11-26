@@ -190,6 +190,7 @@ pub fn register(hotkey: &Hotkey, on_press: Callback) -> Result<Registration, Hot
             let mut pressed = false;
             // Blocks until the X server sends something: no wake-up otherwise.
             while let Ok(event) = thread_conn.wait_for_event() {
+                tracing::trace!(?event, "x11 hotkey thread");
                 match event {
                     Event::KeyPress(e)
                         if e.detail == keycode
