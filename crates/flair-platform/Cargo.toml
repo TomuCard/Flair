@@ -1,0 +1,14 @@
+[package]
+name = "flair-platform"
+description = "OS-specific code for Flair: paths, global shortcut, app listing, icons, IPC"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+directories.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

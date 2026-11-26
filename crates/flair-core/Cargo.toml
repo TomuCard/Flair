@@ -1,0 +1,24 @@
+[package]
+name = "flair-core"
+description = "Flair core: shared types, Provider trait, settings registry, themes, i18n (no UI dependency)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+fluent-bundle.workspace = true
+palette.workspace = true
+serde.workspace = true
+sys-locale.workspace = true
+thiserror.workspace = true
+toml.workspace = true
+tracing.workspace = true
+unic-langid.workspace = true
+
+[dev-dependencies]
+fluent-syntax = "0.12"
+proptest.workspace = true
+
+[lints]
+workspace = true
