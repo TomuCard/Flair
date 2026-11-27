@@ -1,11 +1,14 @@
 //! Rendering of the launcher (mockups of spec section 7).
 
 use flair_core::result::BuiltinIcon;
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use flair_core::{IconSource, ProviderKind, ResultItem};
 use iced::font::Weight;
 use iced::widget::text::{Span, Wrapping};
 use iced::widget::{
-    Id, column, container, mouse_area, rich_text, row, scrollable, space, span, svg, text,
+    Id, column, container, image, mouse_area, rich_text, row, scrollable, space, span, svg, text,
     text_input,
 };
 use iced::{Element, Fill, Font, Length, Padding, alignment, window};
@@ -14,6 +17,46 @@ use super::{Flair, INPUT_ID, LIST_ID, Message};
 use crate::assets;
 use crate::design;
 use crate::style::Palette;
+
+/// Renderer handles of the pixel icons currently listed, keyed by the
+/// address of their pixel buffer (kept alive here, so it cannot be reused).
+/// Creating a handle on every frame would upload the image again each time.
+#[derive(Default)]
+pub struct IconHandles(HashMap<usize, (Arc<[u8]>, image::Handle)>);
+
+impl IconHandles {
+    fn key(pixels: &Arc<[u8]>) -> usize {
+        Arc::as_ptr(pixels).cast::<u8>() as usize
+    }
+
+    /// Keeps the handles of the icons in `items`, creating missing ones.
+    pub fn update(&mut self, items: &[ResultItem]) {
+        let mut next = HashMap::new();
+        for item in items {
+            if let IconSource::Rgba {
+                width,
+                height,
+                pixels,
+            } = &item.icon
+            {
+                let key = Self::key(pixels);
+                let entry = self.0.remove(&key).unwrap_or_else(|| {
+                    let handle = image::Handle::from_rgba(*width, *height, pixels.to_vec());
+                    (Arc::clone(pixels), handle)
+                });
+                next.insert(key, entry);
+            }
+        }
+        self.0 = next;
+    }
+
+    pub fn get(&self, icon: &IconSource) -> Option<&image::Handle> {
+        match icon {
+            IconSource::Rgba { pixels, .. } => self.0.get(&Self::key(pixels)).map(|(_, h)| h),
+            _ => None,
+        }
+    }
+}
 
 /// Interface font (embedded Inter) and monospaced font for calculations.
 pub const INTER: Font = Font::with_name("Inter");
@@ -123,15 +166,24 @@ impl Flair {
         } else {
             p.text_secondary
         };
-        let icon = match &item.icon {
-            IconSource::Builtin(icon) => assets::builtin(*icon),
-            // Real icons (apps, files) arrive with milestone 4.
-            _ => assets::builtin(BuiltinIcon::App),
+        let icon: Element<'a, Message> = match self.icon_handles.get(&item.icon) {
+            // Real app icons keep their colors.
+            Some(handle) => image(handle.clone())
+                .width(design::ICON_SIZE)
+                .height(design::ICON_SIZE)
+                .into(),
+            None => {
+                let handle = match &item.icon {
+                    IconSource::Builtin(icon) => assets::builtin(*icon),
+                    _ => assets::builtin(BuiltinIcon::App),
+                };
+                svg(handle)
+                    .width(design::ICON_SIZE)
+                    .height(design::ICON_SIZE)
+                    .style(move |_, _| Palette::tint(icon_color))
+                    .into()
+            }
         };
-        let icon = svg(icon)
-            .width(design::ICON_SIZE)
-            .height(design::ICON_SIZE)
-            .style(move |_, _| Palette::tint(icon_color));
 
         let mut texts = column![title(item, p)];
         if let Some(subtitle) = &item.subtitle {

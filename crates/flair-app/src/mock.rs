@@ -1,5 +1,7 @@
-//! Mock results for milestone 1: lets the UI, keyboard navigation and design
-//! be tested before the real providers exist (milestones 4 to 7).
+//! Mock results for the UI tests: fixed apps, files and calculations, so the
+//! interface and keyboard navigation are tested without the real sources.
+
+//! interface and keyboard navigation are tested without the real sources.
 
 use std::path::PathBuf;
 use std::sync::Arc;

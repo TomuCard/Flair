@@ -113,9 +113,9 @@ fn create_tray(config: &Config, i18n: &I18n, tokens: &Tokens) -> Result<Tray, St
         stats: i18n.t("tray-stats"),
         quit: i18n.t("tray-quit"),
     };
-    // Reindexing comes with milestone 6.
+    // Reindexing rescans the applications (and the files, milestone 6).
     let enabled = tray::Enabled {
-        reindex: false,
+        reindex: true,
         check_update: true,
     };
     Tray::new(

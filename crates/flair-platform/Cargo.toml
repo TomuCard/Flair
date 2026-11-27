@@ -10,6 +10,7 @@ repository.workspace = true
 flair-core.workspace = true
 directories.workspace = true
 interprocess.workspace = true
+png.workspace = true
 resvg.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
@@ -27,6 +28,7 @@ windows = { version = "0.62.2", features = [
     "Win32_System_Com",
     "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",
+    "Win32_Storage_FileSystem",
     "Win32_System_Console",
     "Win32_System_ProcessStatus",
     "Win32_System_Registry",
@@ -48,6 +50,7 @@ workspace = true
 # Tray: StatusNotifierItem over D-Bus with ksni on a Tokio runtime. Not
 # through tray-icon, which forces the async-io stack whose `blocking` pool
 # keeps a thread waking up every 500 ms forever (see `tray/linux.rs`).
+freedesktop-icons = "0.4.0"
 ksni.workspace = true
 rfd.workspace = true
 tokio.workspace = true

@@ -2,15 +2,18 @@
 //!
 //! - [`query`]: user query and prefix parsing;
 //! - [`result`]: result items and their actions;
+//! - [`rank`]: fuzzy matching and ranking bonuses; [`frecency`]: launch history;
 //! - [`provider`]: the [`Provider`](provider::Provider) trait every result source implements;
 //! - [`settings`]: the single settings registry and the TOML configuration;
 //! - [`theme`]: 3 colors → full set of contrast-checked UI tokens;
 //! - [`i18n`]: user interface translations (Fluent).
 
 pub mod archive;
+pub mod frecency;
 pub mod i18n;
 pub mod provider;
 pub mod query;
+pub mod rank;
 pub mod result;
 pub mod settings;
 pub mod theme;

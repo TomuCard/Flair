@@ -57,13 +57,7 @@ pub struct Enabled {
 /// Called with the user's choice, from a background thread.
 pub type Callback = Arc<dyn Fn(TrayAction) + Send + Sync>;
 
-/// Straight-alpha RGBA pixels.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IconRgba {
-    pub width: u32,
-    pub height: u32,
-    pub rgba: Vec<u8>,
-}
+pub use crate::image::IconRgba;
 
 pub struct Tray {
     inner: imp::Tray,

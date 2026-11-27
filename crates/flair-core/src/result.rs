@@ -100,6 +100,10 @@ pub enum Action {
     Launch {
         target: LaunchTarget,
     },
+    /// Windows: start as administrator (`runas`).
+    LaunchAsAdmin {
+        target: LaunchTarget,
+    },
     Open {
         path: PathBuf,
     },
@@ -126,6 +130,7 @@ impl Action {
     pub fn label_id(&self) -> &'static str {
         match self {
             Self::Launch { .. } | Self::Open { .. } | Self::OpenUrl { .. } => "action-open",
+            Self::LaunchAsAdmin { .. } => "action-run-admin",
             Self::RevealInFolder { .. } => "action-reveal",
             Self::CopyToClipboard { .. } => "action-copy",
             Self::SystemCommand(_) | Self::Internal { .. } => "action-run",
@@ -171,6 +176,9 @@ impl ResultItem {
                 Action::Launch {
                     target: LaunchTarget::Path { path, .. } | LaunchTarget::DesktopEntry(path),
                 } => return path.display().to_string(),
+                Action::Launch {
+                    target: LaunchTarget::AppUserModelId(id),
+                } => return id.clone(),
                 Action::OpenUrl { url } => return url.clone(),
                 _ => {}
             }

@@ -11,6 +11,7 @@ repository = "https://github.com/TomuCard/Flair"
 [workspace.dependencies]
 flair-core = { path = "crates/flair-core" }
 flair-platform = { path = "crates/flair-platform" }
+flair-providers = { path = "crates/flair-providers" }
 
 anyhow = "1.0.105"
 clap = { version = "4.6.10", features = ["derive"] }
@@ -19,8 +20,10 @@ fluent-bundle = "0.16.0"
 global-hotkey = "0.10.0"
 interprocess = "2.4.10"
 minisign-verify = "0.3.0"
+nucleo-matcher = "0.3.1"
 ksni = { version = "0.3.8", default-features = false, features = ["tokio"] }
 rfd = { version = "0.18.0", default-features = false, features = ["xdg-portal"] }
+png = "0.18.1"
 resvg = { version = "0.50.0", default-features = false }
 semver = "1.0.28"
 serde_json = "1.0"

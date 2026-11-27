@@ -65,6 +65,11 @@ pub struct Flair {
     tokens: Tokens,
     opacity: f32,
     provider: Arc<dyn Provider>,
+    /// Real result sources (`None` in UI tests, which use mock results).
+    sources: Option<crate::sources::Sources>,
+    /// Image handles of the app icons shown, keyed by their pixel buffer, so
+    /// each icon is uploaded to the renderer once.
+    icon_handles: view::IconHandles,
 
     input: String,
     results: Vec<ResultItem>,
@@ -160,6 +165,7 @@ pub struct Init {
     pub i18n: Arc<I18n>,
     pub tokens: Tokens,
     pub provider: Arc<dyn Provider>,
+    pub sources: Option<crate::sources::Sources>,
     pub started: Instant,
 }
 
@@ -198,6 +204,8 @@ impl Flair {
             opacity: init.config.theme.opacity as f32,
             config: init.config,
             provider: init.provider,
+            sources: init.sources,
+            icon_handles: view::IconHandles::default(),
             input: String::new(),
             results: Vec::new(),
             selected: 0,
@@ -306,6 +314,12 @@ impl Flair {
                     return Task::none(); // obsolete answer
                 }
                 self.results = results;
+                // Monochrome icons: no handle, the generic tinted icon is drawn.
+                if self.config.theme.icons == flair_core::settings::config::IconStyle::Color {
+                    self.icon_handles.update(&self.results);
+                } else {
+                    self.icon_handles.update(&[]);
+                }
                 self.selected = 0;
                 self.hovered = None;
                 self.dev.shot_pending = self.dev.screenshot.is_some();
@@ -419,8 +433,12 @@ impl Flair {
             }
             TrayAction::Quit => iced::exit(),
             TrayAction::CheckUpdate => Task::batch([self.show(), self.run_command("update")]),
-            // Not available yet (milestone 6): disabled in the menu.
-            TrayAction::Reindex => Task::none(),
+            TrayAction::Reindex => {
+                if let Some(sources) = &self.sources {
+                    sources.apps.refresh();
+                }
+                Task::none()
+            }
         }
     }
 
@@ -513,10 +531,10 @@ impl Flair {
         {
             self.opacity = config.theme.opacity as f32;
         }
-        self.provider = Arc::new(crate::mock::MockProvider::new(
-            Arc::clone(&self.i18n),
-            config.max_results as usize,
-        ));
+        if let Some(sources) = &self.sources {
+            sources.reload(&self.i18n);
+            self.provider = sources.providers(&self.i18n, &config);
+        }
         self.notices = notices_for(&self.i18n, &loaded.issues);
         self.config = config;
         tracing::info!("configuration reloaded");
@@ -708,6 +726,13 @@ impl Flair {
             return Task::none();
         };
         tracing::info!(id = %item.id, ?action, "activate");
+        if matches!(
+            action,
+            Action::Launch { .. } | Action::LaunchAsAdmin { .. } | Action::Open { .. }
+        ) && let Some(sources) = &self.sources
+        {
+            sources.record_launch(&item.id);
+        }
         match action {
             Action::CopyToClipboard { text } => {
                 let text = if which == Which::Raw {
@@ -730,8 +755,16 @@ impl Flair {
                 self.hide()
             }
             Action::Internal { command } => self.run_command(&command),
-            // Launching applications and system commands: milestones 4 and 7.
-            Action::Launch { .. } | Action::SystemCommand(_) => self.hide(),
+            Action::Launch { target } => {
+                launch(target, false);
+                self.hide()
+            }
+            Action::LaunchAsAdmin { target } => {
+                launch(target, true);
+                self.hide()
+            }
+            // System commands: milestone 7.
+            Action::SystemCommand(_) => self.hide(),
         }
     }
 
@@ -857,6 +890,21 @@ fn notices_for(i18n: &I18n, issues: &[ConfigIssue]) -> Vec<ResultItem> {
             }
         })
         .collect()
+}
+
+/// Starts an application off the UI thread (the elevation prompt of Windows
+/// may take a while); errors are logged.
+fn launch(target: flair_core::LaunchTarget, elevated: bool) {
+    let spawned = std::thread::Builder::new()
+        .name("launch".into())
+        .spawn(move || {
+            if let Err(e) = flair_platform::apps::launch(&target, elevated) {
+                tracing::error!(?target, elevated, "cannot launch: {e}");
+            }
+        });
+    if let Err(e) = spawned {
+        tracing::error!("cannot start a launch thread: {e}");
+    }
 }
 
 /// Opens a file, folder or URL with the default application; errors are logged.
@@ -1001,6 +1049,7 @@ mod tests {
             i18n: Arc::clone(&i18n),
             tokens: builtin::dark().tokens(),
             provider: Arc::new(MockProvider::new(i18n, 8)),
+            sources: None,
             started: Instant::now(),
         };
         let app = Flair::new(init, Services::none()).0;
@@ -1165,6 +1214,7 @@ mod tests {
             i18n: Arc::clone(&i18n),
             tokens: builtin::dark().tokens(),
             provider: Arc::new(MockProvider::new(i18n, 8)),
+            sources: None,
             started: Instant::now(),
         };
         let mut app = Flair::new(init, Services::none()).0;
@@ -1259,6 +1309,7 @@ mod tests {
             i18n: Arc::clone(&i18n),
             tokens: builtin::dark().tokens(),
             provider: Arc::new(MockProvider::new(i18n, 8)),
+            sources: None,
             started: Instant::now(),
         };
         let mut services = Services::none();

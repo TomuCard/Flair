@@ -8,10 +8,12 @@ mod commands;
 mod design;
 mod external;
 mod logging;
+#[cfg(test)]
 mod mock;
 mod platform_window;
 mod png;
 mod services;
+mod sources;
 mod stats;
 mod style;
 mod themes;
@@ -287,10 +289,8 @@ fn run(cli: Cli, paths: &Paths, started: Instant) -> anyhow::Result<ExitCode> {
         ui::Initial::Search
     };
 
-    let provider = Arc::new(mock::MockProvider::new(
-        Arc::clone(&i18n),
-        config.max_results as usize,
-    ));
+    let sources = sources::Sources::start(paths, &i18n, !dev);
+    let provider = sources.providers(&i18n, &config);
     let init = ui::Init {
         dev: ui::Dev {
             query: cli.dev_query,
@@ -308,6 +308,7 @@ fn run(cli: Cli, paths: &Paths, started: Instant) -> anyhow::Result<ExitCode> {
         i18n,
         tokens,
         provider,
+        sources: Some(sources),
         started,
     };
 

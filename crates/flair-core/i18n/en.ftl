@@ -7,6 +7,7 @@ search-placeholder = Search…
 action-open = Open
 action-copy = Copy
 action-reveal = Show folder
+action-run-admin = Run as administrator
 action-run = Run
 
 kind-application = Application

@@ -6,5 +6,11 @@ edition.workspace = true
 rust-version.workspace = true
 repository.workspace = true
 
+[dependencies]
+flair-core.workspace = true
+flair-platform.workspace = true
+notify = { version = "9.0.0", default-features = false }
+tracing.workspace = true
+
 [lints]
 workspace = true
