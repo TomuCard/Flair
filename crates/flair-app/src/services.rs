@@ -90,7 +90,11 @@ impl Services {
 fn register_hotkey(text: &str) -> Result<Registration, HotkeyError> {
     let parsed =
         Hotkey::parse(text).map_err(|e| HotkeyError::Failed(text.to_owned(), e.to_string()))?;
-    hotkey::register(&parsed, Arc::new(|| external::send(External::Toggle)))
+    hotkey::register(
+        &parsed,
+        Arc::new(|| external::send(External::Toggle)),
+        "Show or hide Flair",
+    )
 }
 
 /// Tray icon in a single color: the Flair light/dark foreground following the

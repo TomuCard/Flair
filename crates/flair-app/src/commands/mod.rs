@@ -17,6 +17,7 @@
 
 pub mod help;
 pub mod settings;
+pub mod theme;
 
 use flair_core::command_words::CommandWords;
 use flair_core::i18n::{I18n, Lang};
@@ -103,6 +104,7 @@ pub const CATALOG: &[Command] = &[
     cmd("autostart", Category::Settings, Run::Setting("autostart")),
     cmd("results", Category::Settings, Run::Setting("max_results")),
     cmd("battery", Category::Settings, Run::Args),
+    cmd("theme", Category::Appearance, Run::Args),
     cmd(
         "opacity",
         Category::Appearance,
@@ -418,6 +420,7 @@ fn command_rows(c: &Command, rest: &str, cx: &Context<'_>) -> Vec<Row> {
             "web" => settings::web(rest, cx),
             "calc" => settings::calc(rest, cx),
             "battery" => settings::battery(rest, cx),
+            "theme" => theme::rows(rest, cx),
             "update" => update(c, rest, cx),
             _ => vec![command_row(c, cx)],
         },

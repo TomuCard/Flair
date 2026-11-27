@@ -6,7 +6,7 @@ Launcher clavier façon Spotlight / Raycast / PowerToys Run, en Rust, pour **Win
 |---|---|---|
 | ![](docs/screenshots/dark-en-apps.png) | ![](docs/screenshots/dark-en-calc.png) | ![](docs/screenshots/light-fr-apps.png) |
 
-> **État : jalon 7 (web, système et commandes).** Flair est résident (icône de notification, raccourci global, instance unique, aucun réveil fenêtre cachée), s'installe lui-même, se met à jour par `> mise à jour` avec des versions signées publiées à chaque push sur `main`, et sauvegarde tout dans un fichier `.flair`. Il trouve et lance les **applications installées** (Windows et Linux, avec leurs icônes), classées par `nucleo-matcher` et par la frecency, et **calcule** en français et en anglais à la fois (nombres, fonctions, unités, octets, durées, heures, dates, fuseaux horaires, horodatages Unix, bases, opérations bit à bit, temps de transfert, devises), et **cherche les fichiers** dans un index compact ouvert depuis le disque, tenu à jour en direct. La recherche web passe par des mots-clés configurables, les commandes système (verrouiller, éteindre…) sont reconnues en français et en anglais avec confirmation, et **tout se règle depuis Flair** avec les commandes `>` (`> config`, `> langue`, `> help`). Le cahier des charges complet est dans [`PROMPT.md`](PROMPT.md).
+> **État : jalon 8 (thèmes, Wayland et finitions) — tous les jalons du cahier des charges sont faits.** Flair est résident (icône de notification, raccourci global, instance unique, aucun réveil fenêtre cachée), s'installe lui-même, se met à jour par `> mise à jour` avec des versions signées publiées à chaque push sur `main`, et sauvegarde tout dans un fichier `.flair`. Il trouve et lance les **applications installées** (Windows et Linux, avec leurs icônes), classées par `nucleo-matcher` et par la frecency, et **calcule** en français et en anglais à la fois (nombres, fonctions, unités, octets, durées, heures, dates, fuseaux horaires, horodatages Unix, bases, opérations bit à bit, temps de transfert, devises), et **cherche les fichiers** dans un index compact ouvert depuis le disque, tenu à jour en direct. La recherche web passe par des mots-clés configurables, les commandes système (verrouiller, éteindre…) sont reconnues en français et en anglais avec confirmation, et **tout se règle depuis Flair** avec les commandes `>` (`> config`, `> langue`, `> help`). Le cahier des charges complet est dans [`PROMPT.md`](PROMPT.md).
 
 ## Applications
 
@@ -161,7 +161,7 @@ Une seule instance tourne à la fois : un second `flair` envoie sa commande à l
 **Raccourci global** (`hotkey`, `Alt+Space` par défaut) :
 - Windows : `global-hotkey` (`RegisterHotKey`) ;
 - X11 : implémentation propre avec `x11rb` (`XGrabKey` sur la fenêtre racine, thread bloqué sur la connexion X). La crate `global-hotkey` n'est **pas** utilisée sous X11 : sa boucle interroge le serveur X toutes les 50 ms, soit 20 réveils par seconde en permanence ;
-- Wayland : impossible sans le portail GlobalShortcuts (jalon 8). Au premier lancement, Flair explique comment lier un raccourci du bureau à `flair --toggle`.
+- Wayland : portail XDG GlobalShortcuts (`zbus`) quand le bureau le fournit ; sinon, au premier lancement, Flair explique comment lier un raccourci du bureau à `flair --toggle`.
 
 Si le raccourci est déjà pris par une autre application, Flair démarre quand même et l'explique dans sa fenêtre (`Entrée` ouvre la configuration).
 
@@ -201,6 +201,26 @@ Un `.flair` n'est pas fiable par défaut : seuls les chemins attendus sont lus, 
 
 Sauvegardes automatiques (avant une mise à jour, un import, une migration ou une réinitialisation) : même format, dans `backups/` du dossier de données, 10 conservées.
 
+## Thèmes
+
+Un thème, c'est 3 couleurs (fond, texte, accent) ; toutes les autres couleurs en sont dérivées avec des contrastes garantis (voir « Organisation »). Deux thèmes intégrés, **Flair clair** et **Flair sombre** ; les autres sont des fichiers `themes/*.toml` du dossier de configuration (`%AppData%\Flair\themes\`, `~/.config/flair/themes/`) :
+
+```toml
+name = "Lavande"
+background = "#1E1B2E"
+foreground = "#E6E1F5"
+accent = "#B79CFF"      # facultatif : sans accent, les lettres trouvées sont seulement en semi-gras
+```
+
+- **`> thème` / `> theme`** liste les thèmes ; **naviguer applique le thème en aperçu**, `Entrée` le garde, `Échap` revient en arrière. Un thème va dans l'emplacement clair ou sombre (`theme.light` / `theme.dark`) selon son fond ; si le mode est forcé sur l'autre type, il bascule.
+- **`> thème 1E1B2E E6E1F5 B79CFF lavande`** crée un thème à partir de 3 couleurs (fond, texte, accent ; `#` facultatif, `#RGB` accepté) et l'affiche aussitôt en aperçu, avec « contraste ajusté » si des couleurs ont dû être corrigées (`> thème 777777 888888 808080` reste lisible). `Entrée` enregistre `themes/lavande.toml` et l'applique. Sans nom : `perso-1`, `perso-2`…
+- **Mode `system`** (par défaut) : Flair suit le thème clair ou sombre du système **en direct**, sans redémarrage. Windows : valeur `AppsUseLightTheme`, surveillée par `RegNotifyChangeKeyValue` (thread bloqué jusqu'au changement). Linux : portail XDG Settings (`org.freedesktop.appearance` / `color-scheme`, signal `SettingChanged`, par `zbus` déjà présent pour l'icône de notification), avec `gsettings` en secours au démarrage. L'icône de notification change de couleur avec.
+- Un fichier de thème invalide est ignoré avec un message (`> ` affiche la raison quand le champ est vide) ; il ne casse jamais le thème actif.
+
+## Rechargement à chaud
+
+Le dossier de configuration est surveillé (`notify`) : modifier `config.toml`, un thème ou un fichier de langue s'applique en quelques centaines de millisecondes, sans redémarrage. Une rafale d'écritures donne un seul rechargement ; le thread dort jusqu'au changement. Une erreur de syntaxe garde la dernière configuration valide et affiche l'erreur.
+
 ## Moteur de rendu
 
 `resources.renderer = "auto" | "gpu" | "cpu"`. **`auto` choisit le rendu logiciel** (`tiny-skia`), d'après les mesures :
@@ -228,6 +248,22 @@ Mesuré sous WSLg (Wayland et X11 via XWayland, rendu logiciel), build release :
 
 Le compteur de réveils (`flair --stats`) compte chaque événement traité : fenêtre, clavier, souris, raccourci, menu, IPC. Interroger `--stats` ne compte pas comme un réveil.
 
+**Mémoire rendue quand Flair est caché** : `resources.trim_memory_after` secondes après le masquage (5 par défaut, 0 = jamais), un seul réveil différé (annulé si Flair réapparaît avant) vide les caches temporaires (images des icônes envoyées au moteur de rendu, derniers résultats), puis :
+- Windows : **mode efficacité** (EcoQoS, `SetProcessInformation` / `ProcessPowerThrottling`, si `resources.efficiency_mode`) et `EmptyWorkingSet` : les pages passent dans la liste d'attente du système, libres pour les autres programmes et relues depuis la RAM (pas le disque) au prochain affichage. Le mode efficacité est coupé dès que la fenêtre s'affiche ;
+- Linux : `malloc_trim(0)` (glibc) rend au système la mémoire libérée.
+
+L'index de fichiers est déjà hors du tas (fichier mappé) : le système reprend ses pages tout seul.
+
+**Benchmarks** (`cargo bench -p flair-providers`, `criterion`) : mesurés sous WSL2, build release :
+
+| Opération | Temps | Objectif |
+|---|---|---|
+| Calcul : `15% de 240`, `26/11/2026 + 45 jours`, `heure à Tokyo en Paris` | 6 à 18 µs | < 16 ms |
+| Calcul avec unités ou fonctions : `5 km en miles`, `5h36 + 65min`, `sin(pi/6) + sqrt(2)` | 0,14 à 0,19 ms | < 16 ms |
+| Saisie qui n'est pas un calcul (`firefox`) | 0,6 µs | — |
+| Classement de 500 applications (`vsc`) | 6 µs | < 16 ms |
+| Fichiers : recherche dans un index d'un million d'entrées (moitié de noms accentués) | 11 à 19 ms | < 50 ms |
+
 **Vérifier soi-même** :
 - Linux : `pidstat -w -t -p $(pgrep -x flair) 5` (aucun `cswch/s` quand Flair est caché), `powertop` (Flair absent de la liste des réveils), et `flair --stats` à une heure d'écart ;
 - Windows : Process Explorer, propriétés de `flair.exe`, onglet *Threads* : la colonne « Context Switch Delta » doit rester à 0 fenêtre cachée ; onglet *Performance* : « Private Bytes ».
@@ -240,7 +276,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-La CI (GitHub Actions, `.github/workflows/ci.yml`) lance `fmt`, `clippy` et `test` sur `ubuntu-latest` et `windows-latest`.
+La CI (GitHub Actions, `.github/workflows/ci.yml`) lance `fmt`, `clippy`, `test`, la compilation des benchmarks et `flair lexicon check` sur `ubuntu-latest` et `windows-latest` ; `release.yml` publie une version signée à chaque push sur `main` dont les tests passent.
 
 ## Organisation
 
@@ -323,12 +359,14 @@ Réglages (table générée depuis le registre, `UPDATE_README=1 cargo test -p f
 
 ## Limitations connues
 
-- **Position** : sous Windows, la fenêtre apparaît sur l'écran sous la souris. Sous Linux, elle reste sur l'écran principal (X11 : à faire ; Wayland : impossible sans layer-shell, jalon 8).
-- **Commandes `>`** : `> thème` (aperçu, création à partir de 3 couleurs) arrive au jalon 8 avec les thèmes personnalisés ; en attendant, `> config theme.mode` / `theme.light` / `theme.dark`. Les valeurs des listes de choix (`dark`, `rad`…) s'écrivent telles quelles, sans traduction.
+- **Position** : sous Windows, la fenêtre apparaît sur l'écran sous la souris. Sous Linux, elle reste sur l'écran principal (X11 : à faire ; Wayland : impossible sans layer-shell).
+- **layer-shell (Wayland)** : non fait. Iced 0.14 crée ses fenêtres avec winit, qui ne gère pas le protocole `wlr-layer-shell` ; il faudrait remplacer la boucle d'Iced par [`iced_layershell`](https://github.com/waycrate/exwlshelleventloop) sous Wayland, un autre runtime à maintenir en parallèle. Proposition : le faire quand Iced l'intégrera, ou comme une option expérimentale ensuite. En attendant, sous Wayland la fenêtre est une fenêtre normale (barre des tâches, position choisie par le compositeur).
+- **Raccourci global sous Wayland** : par le portail XDG GlobalShortcuts quand le bureau le fournit (GNOME 48+, KDE Plasma 5.27+, Hyprland…) ; le bureau peut demander une confirmation et laisser choisir une autre touche. Sans portail (WSLg, anciens bureaux), Flair explique comment lier un raccourci du bureau à `flair --toggle`. Le portail n'a pas pu être essayé ici (WSLg n'en a pas) : à vérifier sur un vrai bureau.
+- **Commandes `>`** : les valeurs des listes de choix (`dark`, `rad`…) s'écrivent telles quelles, sans traduction.
 - **Progression de mise à jour** : affichée dans la fenêtre ; pas encore dans l'infobulle de l'icône de notification.
 - **Icônes Linux** : seule l'icône vectorielle (`hicolor/scalable`) est installée, pas encore les PNG 16 à 256 px.
 - **Wayland, masquage** : winit ne sait pas cacher une fenêtre sous Wayland. Flair la ferme et en ouvre une nouvelle à l'affichage suivant (12 à 15 ms mesurés). Sans portail XDG (WSLg), le premier affichage attend 100 ms un portail qui ne répond pas (`sctk_adwaita`, imposé par Iced).
-- **Fenêtre Linux** : elle apparaît dans la barre des tâches sous Linux (Iced n'expose pas cet attribut) ; layer-shell (jalon 8) réglera ça sur KDE et wlroots.
+- **Fenêtre Linux** : elle apparaît dans la barre des tâches sous Linux (Iced n'expose pas cet attribut ; voir layer-shell).
 - **Wayland, hauteur de la fenêtre** : winit applique un redimensionnement demandé par l'application sans envoyer d'événement `Resized`, et Iced ne refait alors pas sa mise en page. Sous Wayland, la fenêtre transparente garde donc sa hauteur maximale et seul le cadre visible change de taille. Sous Windows et X11, la fenêtre est redimensionnée normalement.
 - **Ombre** : seulement celle du système (DWM sous Windows, avec les coins arrondis). Flair ne dessine pas d'ombre lui-même : le rendu logiciel d'Iced ne redessine que le contour d'un rectangle, pas son ombre, qui se repeignait sur elle-même jusqu'à devenir noire.
 - **Curseur du champ** : Iced 0.14 dessine le curseur avec la couleur du texte. La spec le veut en couleur d'accent, ce qui demande un petit widget dédié (à faire).

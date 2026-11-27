@@ -580,6 +580,7 @@ sense = "unit:CHF"
 help = ["help"]
 language = ["language", "languages"]
 config = ["settings", "setting", "preferences"]
+theme = ["theme", "themes"]
 opacity = ["opacity", "transparency"]
 renderer = ["renderer", "rendering"]
 hotkey = ["hotkey", "shortcut"]

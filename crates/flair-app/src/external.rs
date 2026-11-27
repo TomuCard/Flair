@@ -19,6 +19,10 @@ pub enum External {
     Reload,
     Open(std::path::PathBuf),
     Tray(TrayAction),
+    /// The system switched to dark (`true`) or light.
+    SystemTheme(bool),
+    /// Time to give memory back, if Flair is still hidden since hide `n`.
+    Release(u64),
 }
 
 struct Channel {

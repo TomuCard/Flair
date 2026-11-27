@@ -444,6 +444,12 @@ impl Flair {
             "uninstall:all" => self.uninstall(true),
             "quit" => iced::exit(),
             other => {
+                if let Some(name) = other.strip_prefix("theme:use:") {
+                    return self.use_theme(name);
+                }
+                if let Some(theme) = commands::theme::decode_new(other) {
+                    return self.save_theme(&theme);
+                }
                 if let Some(text) = other.strip_prefix("fill:") {
                     return self.fill(text.to_owned());
                 }
@@ -544,6 +550,62 @@ impl Flair {
             ));
         }
         self.message(rows)
+    }
+
+    /// Uses a theme: it goes to the light or dark slot depending on its
+    /// background; a fixed mode of the other kind switches to its kind.
+    fn use_theme(&mut self, name: &str) -> Task<Message> {
+        use flair_core::settings::config::ThemeMode;
+        let Some(theme) = crate::themes::find(name) else {
+            return Task::none();
+        };
+        let light = theme.is_light();
+        let slot = if light { "theme.light" } else { "theme.dark" };
+        let old = commands::settings::current(&self.config, slot);
+        let write = |key: &str, value: &str| {
+            flair_core::settings::edit::set_in_file(
+                &self.config_path,
+                key,
+                &toml::Value::String(value.to_owned()),
+            )
+        };
+        let mut result = write(slot, name);
+        let mode = self.config.theme.mode;
+        if result.is_ok() && mode != ThemeMode::System && (mode == ThemeMode::Light) != light {
+            result = write("theme.mode", if light { "light" } else { "dark" });
+        }
+        if let Err(e) = result {
+            return self.say(
+                self.i18n
+                    .t_args("setting-failed", &[("error", &e.to_string())]),
+            );
+        }
+        self.last_setting = Some((slot.to_owned(), old));
+        self.reload_config();
+        let kind = self
+            .i18n
+            .t(if light { "theme-light" } else { "theme-dark" });
+        self.say(
+            self.i18n
+                .t_args("theme-applied", &[("name", name), ("kind", &kind)]),
+        )
+    }
+
+    /// Saves a theme created by `> thème <colors> <name>`, then uses it.
+    fn save_theme(&mut self, theme: &flair_core::theme::Theme) -> Task<Message> {
+        let dir = self.paths.themes_dir();
+        let file = dir.join(crate::themes::file_name(&theme.name));
+        let written = std::fs::create_dir_all(&dir)
+            .and_then(|()| std::fs::write(&file, crate::themes::to_toml(theme)));
+        if let Err(e) = written {
+            return self.say(
+                self.i18n
+                    .t_args("setting-failed", &[("error", &e.to_string())]),
+            );
+        }
+        tracing::info!(file = %file.display(), "theme saved");
+        crate::themes::reload(&dir);
+        self.use_theme(&theme.name)
     }
 
     /// `> annuler` after a setting change.

@@ -23,6 +23,7 @@ flair-providers.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 directories.workspace = true
+notify = { version = "9.0.0", default-features = false }
 tracing.workspace = true
 serde.workspace = true
 semver.workspace = true

@@ -74,6 +74,8 @@ pub struct Flair {
     pending_confirm: Option<String>,
     /// A setting is previewed (the look differs from the configuration).
     previewing: bool,
+    /// Counts hides: a memory release only applies to the latest one.
+    hides: u64,
     i18n: Arc<I18n>,
     tokens: Tokens,
     opacity: f32,
@@ -222,6 +224,7 @@ impl Flair {
             completions: Vec::new(),
             pending_confirm: None,
             previewing: false,
+            hides: 0,
             i18n: init.i18n,
             tokens: init.tokens,
             #[allow(clippy::cast_possible_truncation)]
@@ -435,6 +438,18 @@ impl Flair {
             }
             External::Open(path) => Task::batch([self.read_import(path), self.show()]),
             External::Tray(action) => self.on_tray(action),
+            External::Release(hide) => {
+                if !self.visible && hide == self.hides {
+                    self.release_memory();
+                }
+                Task::none()
+            }
+            External::SystemTheme(dark) => {
+                tracing::info!(dark, "system theme changed");
+                crate::themes::set_system_dark(Some(dark));
+                self.apply_look();
+                Task::none()
+            }
         }
     }
 
@@ -505,6 +520,11 @@ impl Flair {
         }
         self.visible = true;
         crate::stats::set_visible(true);
+        // A pending memory release is dropped; the efficiency mode ends.
+        self.hides += 1;
+        if self.config.resources.efficiency_mode {
+            flair_platform::memory::wake();
+        }
         if let Some(sources) = &self.sources {
             sources.files.on_show();
         }
@@ -548,7 +568,13 @@ impl Flair {
     fn reload_config(&mut self) {
         let text = std::fs::read_to_string(&self.config_path).unwrap_or_default();
         let loaded = flair_core::settings::parse_config(&text);
-        let config = loaded.config;
+        let invalid_themes = crate::themes::reload(&self.paths.themes_dir());
+        // A file that cannot be read keeps the last valid configuration.
+        let config = if loaded.is_syntax_error() {
+            self.config.clone()
+        } else {
+            loaded.config
+        };
         if config.hotkey != self.config.hotkey {
             self.services.reregister_hotkey(&config.hotkey);
         }
@@ -556,21 +582,26 @@ impl Flair {
         if lang != self.i18n.lang() {
             self.i18n = Arc::new(I18n::new(lang));
         }
-        self.tokens = crate::themes::active(&config).tokens();
-        #[allow(clippy::cast_possible_truncation)]
-        {
-            self.opacity = config.theme.opacity as f32;
-        }
         if let Some(sources) = &self.sources {
             sources.reload(&config, &self.i18n);
             self.provider = sources.providers(&self.i18n, &config);
         }
         self.notices = notices_for(&self.i18n, &loaded.issues);
+        for (file, error) in invalid_themes {
+            let name = file
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            self.notices.push(crate::commands::info(
+                self.i18n.t_args("theme-invalid", &[("file", &name)]),
+                Some(error),
+            ));
+        }
         let lexicon_dir = self.paths.lexicon_dir();
         self.words = crate::commands::words(&config, &lexicon_dir, self.i18n.lang());
         self.languages = crate::commands::languages(&lexicon_dir);
         self.config = config;
-        self.previewing = false;
+        self.apply_look();
         tracing::info!("configuration reloaded");
     }
 
@@ -899,6 +930,7 @@ impl Flair {
         self.ctrl_held = false;
         self.pending_confirm = None;
         self.end_preview();
+        self.schedule_release();
         if !self.config.keep_last_query {
             self.input.clear();
             self.results.clear();
@@ -924,15 +956,25 @@ impl Flair {
     /// look (`> config theme.mode dark`); `Enter` keeps it, anything else
     /// goes back.
     fn update_preview(&mut self) {
-        let preview = std::ptr::eq(self.rows().as_ptr(), self.results.as_ptr())
+        let command = std::ptr::eq(self.rows().as_ptr(), self.results.as_ptr())
             .then(|| self.results.get(self.selected))
             .flatten()
             .and_then(|row| match row.primary_action() {
-                Some(Action::Internal { command }) => {
-                    crate::commands::settings::decode_set(command)
-                }
+                Some(Action::Internal { command }) => Some(command.clone()),
                 _ => None,
-            })
+            });
+        // A theme of `> thème`, listed or being created.
+        if let Some(theme) = command
+            .as_deref()
+            .and_then(crate::commands::theme::previewed)
+        {
+            self.tokens = theme.tokens();
+            self.previewing = true;
+            return;
+        }
+        let preview = command
+            .as_deref()
+            .and_then(crate::commands::settings::decode_set)
             .filter(|(key, _)| crate::commands::settings::PREVIEWED.contains(&key.as_str()))
             .and_then(|(key, value)| {
                 crate::commands::settings::with_value(&self.config, &key, &value)
@@ -948,6 +990,59 @@ impl Flair {
             }
             None => self.end_preview(),
         }
+    }
+
+    /// The look of the configuration (theme, system preference, opacity),
+    /// and the tray icon in its color.
+    fn apply_look(&mut self) {
+        self.previewing = false;
+        self.tokens = crate::themes::active(&self.config).tokens();
+        #[allow(clippy::cast_possible_truncation)]
+        {
+            self.opacity = self.config.theme.opacity as f32;
+        }
+        if let Some(tray) = &mut self.services.tray
+            && let Ok(icon) = crate::services::tray_icon(&self.config, &self.tokens)
+        {
+            tray.set_icon(icon);
+        }
+    }
+
+    /// One wake-up, `trim_memory_after` seconds after hiding (0: never).
+    fn schedule_release(&mut self) {
+        self.hides += 1;
+        let delay = self.config.resources.trim_memory_after;
+        if delay == 0 || self.dev.screenshot.is_some() {
+            return;
+        }
+        let hide = self.hides;
+        let spawned = std::thread::Builder::new()
+            .name("release-memory".into())
+            .spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(u64::from(delay)));
+                crate::external::send(External::Release(hide));
+            });
+        if let Err(e) = spawned {
+            tracing::debug!(error = %e, "cannot schedule the memory release");
+        }
+    }
+
+    /// Hidden for a while: caches emptied, memory given back to the system.
+    fn release_memory(&mut self) {
+        let before = flair_platform::memory::resident_bytes();
+        self.icon_handles = view::IconHandles::default();
+        if !self.config.keep_last_query {
+            self.results = Vec::new();
+            self.completions = Vec::new();
+        }
+        self.screen_rows.shrink_to_fit();
+        flair_platform::memory::release(self.config.resources.efficiency_mode);
+        let after = flair_platform::memory::resident_bytes();
+        tracing::info!(
+            before_mb = before.map(|b| b / 1_048_576),
+            after_mb = after.map(|b| b / 1_048_576),
+            "memory released"
+        );
     }
 
     /// Back to the look of the configuration.
@@ -1435,6 +1530,34 @@ mod tests {
         assert!(app.previewing);
         let _ = app.update(Message::InputChanged("> stats".into()));
         assert!(!app.previewing);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn themes_are_created_previewed_and_applied() {
+        let (mut app, dir) = app_with_config("theme");
+        app.paths = flair_platform::paths::Paths::rooted(&dir);
+        let before = app.tokens;
+        let _ = app.update(Message::InputChanged(
+            "> thème 1E1B2E E6E1F5 B79CFF lavande".into(),
+        ));
+        assert!(app.previewing);
+        assert_ne!(app.tokens, before, "previewed at once");
+        named(&mut app, Named::Enter, Code::Enter);
+        let file = dir.join("config/themes/lavande.toml");
+        assert!(
+            std::fs::read_to_string(&file)
+                .expect("saved")
+                .contains("#1E1B2E")
+        );
+        assert_eq!(app.config.theme.dark, "lavande");
+        let text = std::fs::read_to_string(app.config_path.clone()).expect("config");
+        assert!(text.contains("dark = \"lavande\""), "{text}");
+        // Undo goes back to the previous dark theme.
+        let _ = app.update(Message::InputChanged("> annuler".into()));
+        named(&mut app, Named::Enter, Code::Enter);
+        assert_eq!(app.config.theme.dark, "Flair sombre");
+        crate::themes::reload(std::path::Path::new("/nonexistent"));
         let _ = std::fs::remove_dir_all(dir);
     }
 

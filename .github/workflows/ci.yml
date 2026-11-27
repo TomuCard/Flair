@@ -28,6 +28,10 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Tests
         run: cargo test --workspace
+      # Benchmarks are built (not run: shared runners are too noisy to judge
+      # timings); run them locally with `cargo bench -p flair-providers`.
+      - name: Benchmarks build
+        run: cargo bench --workspace --no-run
       # Conflicts between language files, for every combination of the
       # built-in languages (fails if one is unresolved).
       - name: Lexicon check

@@ -708,6 +708,7 @@ sense = "unit:CHF"
 help = ["aide"]
 language = ["langue", "langues"]
 config = ["réglages", "réglage", "paramètres", "préférences"]
+theme = ["thème", "thèmes"]
 opacity = ["transparence", "opacité"]
 renderer = ["rendu", "moteur de rendu"]
 hotkey = ["raccourci", "raccourci clavier"]
