@@ -120,7 +120,11 @@ impl MockProvider {
         for (i, value) in results.iter().enumerate() {
             let main = i == 0;
             out.push(ResultItem {
-                id: format!("calc:{i}"),
+                id: if main {
+                    flair_providers::calc::MAIN_ID.to_owned()
+                } else {
+                    format!("calc:{i}")
+                },
                 title: (*value).to_owned(),
                 // Only the main result shows the expression under it.
                 subtitle: main.then(|| (*input).to_owned()),

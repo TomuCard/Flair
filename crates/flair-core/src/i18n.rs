@@ -50,6 +50,19 @@ impl Lang {
         }
     }
 
+    /// Language code of the system (`fr`, `en`, `de`…), lowercase.
+    pub fn system_language() -> String {
+        sys_locale::get_locale()
+            .map(|l| {
+                l.split(['-', '_', '.'])
+                    .next()
+                    .unwrap_or_default()
+                    .to_ascii_lowercase()
+            })
+            .filter(|l| !l.is_empty())
+            .unwrap_or_else(|| "en".into())
+    }
+
     /// Resolves the `ui_language` setting (`system` reads the OS locale).
     pub fn resolve(setting: UiLanguageSetting) -> Self {
         match setting {

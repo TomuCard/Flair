@@ -75,9 +75,9 @@ pub fn row_height(item: &ResultItem) -> f32 {
     design::row_height(item.subtitle.is_some())
 }
 
-/// The main calculator result is the one carrying the expression as subtitle.
+/// The main calculator result (shown larger, with the expression under it).
 fn is_main_calc(item: &ResultItem) -> bool {
-    item.provider == ProviderKind::Calculator && item.subtitle.is_some()
+    item.provider == ProviderKind::Calculator && item.id == flair_providers::calc::MAIN_ID
 }
 
 impl Flair {

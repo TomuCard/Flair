@@ -532,7 +532,7 @@ impl Flair {
             self.opacity = config.theme.opacity as f32;
         }
         if let Some(sources) = &self.sources {
-            sources.reload(&self.i18n);
+            sources.reload(&config, &self.i18n);
             self.provider = sources.providers(&self.i18n, &config);
         }
         self.notices = notices_for(&self.i18n, &loaded.issues);
@@ -720,7 +720,8 @@ impl Flair {
         let action = match which {
             Which::Primary => item.primary_action(),
             Which::Secondary => item.secondary_action().or(item.primary_action()),
-            Which::Raw => item.primary_action(),
+            // `Alt+Enter`: the raw value (calculator: third action).
+            Which::Raw => item.actions.get(2).or(item.primary_action()),
         };
         let Some(action) = action.cloned() else {
             return Task::none();

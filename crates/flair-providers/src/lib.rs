@@ -5,6 +5,7 @@
 //! milestone 6, web and system commands with milestone 7.
 
 pub mod apps;
+pub mod calc;
 
 use std::sync::Arc;
 

@@ -1,0 +1,209 @@
+# English words of the calculator. See README.md for the format.
+
+[meta]
+code = "en"
+name = "English"
+decimal_separator = "."
+date_order = "mdy"
+
+# ---------------------------------------------------------------- conversion and operators
+# The same word `in` has three senses: conversion, "in 90 min", inch.
+
+[[word]]
+forms = ["to", "as", "into", "convert to"]
+sense = "convert_to"
+priority = 30
+
+[[word]]
+forms = ["in"]
+sense = "convert_to"
+when = { between = ["quantity", "unit"] }
+priority = 30
+
+[[word]]
+forms = ["in"]
+sense = "relative_in"
+when = { position = "start", before = "duration" }
+priority = 20
+
+[[word]]
+forms = ["in"]
+sense = "unit:inch"
+when = { after = "number" }
+priority = 10
+
+[[word]]
+forms = ["of"]
+sense = "of"
+when = { after = "percent" }
+
+[[word]]
+forms = ["percent", "per cent"]
+sense = "percent"
+
+[[word]]
+forms = ["times", "multiplied by"]
+sense = "op:*"
+
+[[word]]
+forms = ["divided by", "over"]
+sense = "op:/"
+
+[[word]]
+forms = ["plus"]
+sense = "op:+"
+
+[[word]]
+forms = ["minus"]
+sense = "op:-"
+
+[[word]]
+forms = ["to the power of", "power"]
+sense = "op:^"
+
+[[word]]
+forms = ["modulo"]
+sense = "op:mod"
+
+[[word]]
+forms = ["squared"]
+sense = "fend:^2"
+
+[[word]]
+forms = ["cubed"]
+sense = "fend:^3"
+
+[[word]]
+forms = ["an", "a"]
+sense = "one"
+when = { before = "unit" }
+
+# ---------------------------------------------------------------- bytes
+
+[[word]]
+forms = ["byte", "bytes"]
+sense = "unit:byte"
+
+# ---------------------------------------------------------------- time
+
+[[word]]
+forms = ["d"]
+sense = "unit:day"
+when = { after = ["number", "sense:convert_to"] }
+case_sensitive = true
+
+[[word]]
+forms = ["day", "days"]
+sense = "unit:day"
+
+[[word]]
+forms = ["w", "wk", "wks"]
+sense = "unit:week"
+when = { after = ["number", "sense:convert_to"] }
+case_sensitive = true
+
+[[word]]
+forms = ["week", "weeks"]
+sense = "unit:week"
+
+[[word]]
+forms = ["y", "yr", "yrs"]
+sense = "unit:year"
+when = { after = ["number", "sense:convert_to"] }
+case_sensitive = true
+
+[[word]]
+forms = ["year", "years"]
+sense = "unit:year"
+
+[[word]]
+forms = ["month", "months"]
+sense = "unit:month"
+
+[[word]]
+forms = ["min"]
+sense = "unit:min"
+
+[[word]]
+forms = ["mins"]
+sense = "unit:min"
+
+[[word]]
+forms = ["minute", "minutes"]
+sense = "unit:minute"
+
+[[word]]
+forms = ["hour", "hours", "hr", "hrs"]
+sense = "unit:hour"
+
+[[word]]
+forms = ["second", "seconds", "sec", "secs"]
+sense = "unit:second"
+
+# ---------------------------------------------------------------- lengths, masses, volumes
+
+[[word]]
+forms = ["light year", "light years", "light-year", "light-years", "ly"]
+sense = "unit:light_year"
+
+[[word]]
+forms = ["tbsp", "tablespoon", "tablespoons"]
+sense = "unit:tablespoon"
+
+[[word]]
+forms = ["tsp", "teaspoon", "teaspoons"]
+sense = "unit:teaspoon"
+
+[[word]]
+forms = ["kilo", "kilos"]
+sense = "unit:kilogram"
+
+[[word]]
+forms = ["metric ton", "metric tons", "ton", "tons"]
+sense = "unit:tonne"
+
+# ---------------------------------------------------------------- angles and temperatures
+
+[[word]]
+forms = ["degree celsius", "degrees celsius", "celsius"]
+sense = "unit:°C"
+
+[[word]]
+forms = ["degree fahrenheit", "degrees fahrenheit", "fahrenheit"]
+sense = "unit:°F"
+
+# ---------------------------------------------------------------- functions
+
+[[word]]
+forms = ["square root of", "square root", "root of"]
+sense = "func:sqrt"
+
+[[word]]
+forms = ["cube root of", "cube root"]
+sense = "func:cbrt"
+
+[[word]]
+forms = ["prime"]
+sense = "func:isprime"
+
+[[word]]
+forms = ["absolute value of", "absolute value"]
+sense = "func:abs"
+
+[[word]]
+forms = ["factorial"]
+sense = "func:factorial"
+
+# ---------------------------------------------------------------- bases and formats
+
+[[word]]
+forms = ["hexadecimal"]
+sense = "fend:hex"
+
+[[word]]
+forms = ["binary"]
+sense = "fend:binary"
+
+[[word]]
+forms = ["decimal"]
+sense = "fend:decimal"

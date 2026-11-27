@@ -173,3 +173,7 @@ backup-reason-update = before update
 backup-reason-import = before import
 backup-reason-reset = before reset
 backup-reason-migration = before migration
+calc-read-as = read as: { $reading }
+calc-too-big = Too big to compute
+calc-prime = { $n } is prime
+calc-not-prime = { $n } is not prime

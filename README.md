@@ -6,7 +6,7 @@ Launcher clavier façon Spotlight / Raycast / PowerToys Run, en Rust, pour **Win
 |---|---|---|
 | ![](docs/screenshots/dark-en-apps.png) | ![](docs/screenshots/dark-en-calc.png) | ![](docs/screenshots/light-fr-apps.png) |
 
-> **État : jalon 4 en cours (applications ; le calcul suit).** Flair est résident (icône de notification, raccourci global, instance unique, aucun réveil fenêtre cachée), s'installe lui-même, se met à jour par `> mise à jour` avec des versions signées publiées à chaque push sur `main`, et sauvegarde tout dans un fichier `.flair`. Il trouve et lance les **applications installées** (Windows et Linux, avec leurs icônes), classées par `nucleo-matcher` et par la frecency. Le calcul arrive avec la deuxième partie du jalon 4, les fichiers au jalon 6, le web et les commandes système au jalon 7. Le cahier des charges complet est dans [`PROMPT.md`](PROMPT.md).
+> **État : jalon 4 (applications et calcul de base).** Flair est résident (icône de notification, raccourci global, instance unique, aucun réveil fenêtre cachée), s'installe lui-même, se met à jour par `> mise à jour` avec des versions signées publiées à chaque push sur `main`, et sauvegarde tout dans un fichier `.flair`. Il trouve et lance les **applications installées** (Windows et Linux, avec leurs icônes), classées par `nucleo-matcher` et par la frecency, et **calcule** en français et en anglais à la fois (nombres, fonctions, unités, octets). Les durées, dates et devises arrivent au jalon 5, les fichiers au jalon 6, le web et les commandes système au jalon 7. Le cahier des charges complet est dans [`PROMPT.md`](PROMPT.md).
 
 ## Applications
 
@@ -14,6 +14,17 @@ Launcher clavier façon Spotlight / Raycast / PowerToys Run, en Rust, pour **Win
 - **Linux** : fichiers `.desktop` de `$XDG_DATA_HOME`, `$XDG_DATA_DIRS`, Flatpak et Snap, en respectant `NoDisplay`, `Hidden`, `OnlyShowIn`/`NotShowIn` et `TryExec`. `Name`, `Name[fr]`, `GenericName` et `Keywords` dans les deux langues sont indexés : `Fichiers` et `Files` trouvent tous les deux le gestionnaire de fichiers. Codes de `Exec` (`%f`, `%U`, `%i`, `%c`, `%k`…) et `Terminal=true` gérés. Icônes du thème courant (`freedesktop-icons`), PNG et SVG.
 - **Mise à jour à chaud** : les dossiers sources sont surveillés (`notify`) ; un changement relance l'indexation après 2 s de calme. « Réindexer » dans l'icône de notification force un nouveau parcours.
 - **Classement** : `nucleo-matcher` (accents et casse ignorés), bonus si la requête est le début du nom, d'un mot ou des initiales (`vsc` → **V**isual **S**tudio **C**ode), applications avant fichiers à score égal, et **frecency** : chaque lancement est enregistré dans `frecency.json` (nombre et date du dernier usage, inclus dans les exports `.flair`), et ce qui est lancé souvent et récemment remonte. Les correspondances trop dispersées (`calc` dans « Lo**c**al Security Poli**c**y ») sont écartées.
+
+## Calculatrice
+
+On tape un calcul, en français, en anglais ou en mélangeant les deux : `15% de 240`, `5 km to miles`, `1 Gio en Mo`, `une heure en minutes`, `10 kW fois 3h`, `pgcd(12; 18)`, `sin(30)`, `1/3 + 1/6`. Le résultat principal s'affiche en grand, les variantes dessous : fraction et décimale, nombre complet d'une notation scientifique, octets décimaux et binaires (`Mo` et `Mio`), autres lectures d'une saisie ambiguë (« lu comme : 5 min »). `Entrée` copie le résultat affiché, `Ctrl+Entrée` le calcul complet (`1/3 + 1/6 = 1/2`), `Alt+Entrée` la valeur brute (sans unité, avec un point décimal).
+
+- **Pipeline** (`flair-providers/src/calc/`) : détection rapide, découpage en jetons, mots reconnus avec les **fichiers de langue** et leurs conditions, toutes les lectures possibles (16 au plus) évaluées par [`fend-core`](https://github.com/printfn/fend), celles qui échouent écartées : l'évaluation tranche les ambiguïtés. Mise en forme dans la langue de l'interface (`1,5` et `jours` en français).
+- **Fichiers de langue** : [`lexicon/`](lexicon/README.md) (`common.toml`, `fr.toml`, `en.toml`), intégrés au binaire. Ajouter une langue = ajouter un fichier. On peut ajouter ou remplacer des fichiers dans le dossier `lexicon/` de la configuration (relus quand la configuration est rechargée ; un fichier invalide est ignoré, la raison est dans les logs). Désactiver une langue dans `input_languages` désactive vraiment ses mots : avec `["fr"]` seul, `5 km to miles` n'est plus un calcul.
+- **Nombres** : séparateurs de milliers (`1 500`, `1'000'000`, `1_000`, `1,000,000`, espaces insécables), virgule décimale selon `decimal_separator` (en `auto`, `1,500` suit la langue du système et l'autre lecture est proposée en variante), notation scientifique au-delà de 15 chiffres, `significant_digits` chiffres significatifs pour les valeurs approchées.
+- **Robustesse** : 50 ms au plus pour toutes les lectures d'une saisie ; au-delà (`10^10^10^10`, `1000000!`), « Trop grand pour être calculé ». Évaluation hors du thread de l'interface, annulée à chaque frappe.
+- **Ce que Flair ajoute à fend-core** (vérifié avant de coder) : les unités `kbit`/`Mbit`/`Gbit` et `Kibit`/`Mibit`, `Mbps`, les octets français (`Ko`, `Mo`, `Go`, `Kio`…, `Mo` étant le mois pour fend) ; `gcd`/`pgcd`, `lcm`/`ppcm`, test de primalité (Miller-Rabin) et forme fonction de `nCr(n; k)`/`nPr` ; l'ajout et le retrait de pourcentages (`240 + 15%` = 276, fend donne 240,15) ; le regroupement des quantités (`100 km / 1.5h`, que fend lit `(100 km / 1.5) × h`) ; `5 ft 11 in` et `5 pieds 11` additionnés ; les degrés par défaut en trigonométrie (`angle_unit`) ; `kWh` pour une puissance multipliée par une durée (fend répond en joules) ; `x` et `·` pour multiplier ; les préfixes `0x`/`0b`/`0o` des conversions de base ; l'arrondi aux chiffres significatifs et la notation scientifique en sortie.
+- **Tests** : `lexicon/tests/{common,fr,en}.toml`, environ 230 cas exécutés avec chaque combinaison de langues (`fr`, `en`, `fr`+`en`, `en`+`fr`) et dans les deux langues d'interface ; chaque cas français a son jumeau anglais au même résultat ; tests de propriétés (`proptest`) : aucune saisie ne fait paniquer le moteur.
 
 ## Installer
 
@@ -188,10 +199,11 @@ La CI (GitHub Actions, `.github/workflows/ci.yml`) lance `fmt`, `clippy` et `tes
 ```
 crates/
 ├── flair-core/       types, trait Provider, registre des réglages, config, thèmes, i18n (sans UI)
-├── flair-providers/  sources de résultats (applications ; calcul, fichiers, web, système à venir)
+├── flair-providers/  sources de résultats : applications, calculatrice (fichiers, web, système à venir)
 ├── flair-platform/   code propre à l'OS : chemins, raccourci global, icône de notification, IPC,
 │                     démarrage auto, mémoire, écran sous la souris (seul crate avec `unsafe`)
 └── flair-app/        binaire `flair` : interface Iced, logs, lancement
+lexicon/              fichiers de langue de la calculatrice et leurs tests
 assets/
 ├── fonts/            Inter et JetBrains Mono (OFL)
 ├── icons/            logo Flair (flair.svg, flair-tiny.svg)
@@ -274,6 +286,8 @@ Réglages (table générée depuis le registre, `UPDATE_README=1 cargo test -p f
 - **Curseur du champ** : Iced 0.14 dessine le curseur avec la couleur du texte. La spec le veut en couleur d'accent, ce qui demande un petit widget dédié (à faire).
 - **Premier affichage après le démarrage** : les applications sont indexées en arrière-plan (environ 1 à 2 s sous Windows, icônes comprises). Une recherche tapée avant la fin ne les trouve pas encore ; une recherche déjà affichée ne se met pas à jour quand une icône arrive.
 - **Nouvelles applications du Store** : les raccourcis sont surveillés, pas le dossier `shell:AppsFolder`. Une application du Store installée pendant que Flair tourne apparaît après « Réindexer » ou au prochain démarrage.
+- **Calculatrice, jalon 5** : durées et heures de la journée (`5h36 + 65min`, `14h30 + 2h45`), dates, `maintenant`/`now`, `il y a`/`ago`, `dans`/`in 90 min`, temps de transfert (`4 Go à 100 Mbit/s`), horodatages Unix, opérations bit à bit, devises et historique des calculs. Les mots existent déjà dans les fichiers de langue pour certains, mais ne donnent pas encore de résultat.
+- **Calculatrice, frappe en cours** : une saisie invalide n'affiche rien ; le dernier résultat valide n'est pas encore gardé en grisé.
 - **Icônes Linux** : les icônes XPM (anciennes applications) ne sont pas lues ; l'icône générique les remplace.
 
 ## Développement
@@ -292,6 +306,13 @@ flair --show --dev-query "vsc" --dev-screenshot capture.png
 ```
 
 Elles tapent la requête, enregistrent une capture PNG de la fenêtre, puis quittent (les captures du haut de cette page sont faites ainsi).
+
+Conflits entre fichiers de langue (même forme, sens différents) : la commande les liste avec un exemple de saisie, et échoue s'il en reste un non résolu. La CI la lance.
+
+```bash
+flair lexicon check                 # toutes les combinaisons de langues
+flair lexicon check --langs fr,en   # une seule (fichiers de l'utilisateur compris)
+```
 
 ## Licences des ressources
 

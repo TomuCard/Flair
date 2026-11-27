@@ -9,8 +9,14 @@ repository.workspace = true
 [dependencies]
 flair-core.workspace = true
 flair-platform.workspace = true
+fend-core = "1.5.9"
 notify = { version = "9.0.0", default-features = false }
 tracing.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+serde.workspace = true
+toml.workspace = true

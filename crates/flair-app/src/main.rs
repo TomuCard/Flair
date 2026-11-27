@@ -7,6 +7,7 @@ mod build_info;
 mod commands;
 mod design;
 mod external;
+mod lexicon_check;
 mod logging;
 #[cfg(test)]
 mod mock;
@@ -142,6 +143,13 @@ fn main() -> ExitCode {
             == updater::Guard::RolledBack
     {
         return ExitCode::SUCCESS;
+    }
+
+    // `flair lexicon check …`: a development tool with its own arguments.
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("lexicon") {
+        console::attach_parent();
+        return lexicon_check::run(&args[2..], paths.as_ref());
     }
 
     let cli = Cli::parse();
@@ -289,7 +297,7 @@ fn run(cli: Cli, paths: &Paths, started: Instant) -> anyhow::Result<ExitCode> {
         ui::Initial::Search
     };
 
-    let sources = sources::Sources::start(paths, &i18n, !dev);
+    let sources = sources::Sources::start(paths, &config, &i18n, !dev);
     let provider = sources.providers(&i18n, &config);
     let init = ui::Init {
         dev: ui::Dev {

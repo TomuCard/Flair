@@ -1,0 +1,307 @@
+# Mots français de la calculatrice. Voir README.md pour le format.
+
+[meta]
+code = "fr"
+name = "Français"
+decimal_separator = ","
+date_order = "dmy"
+
+# ---------------------------------------------------------------- conversion et opérateurs
+
+[[word]]
+forms = ["en", "vers", "convertir en", "converti en"]
+sense = "convert_to"
+priority = 30
+
+[[word]]
+forms = ["de", "du", "des", "d'"]
+sense = "of"
+when = { after = "percent" }
+
+[[word]]
+forms = ["pourcent", "pour cent", "pourcents"]
+sense = "percent"
+
+[[word]]
+forms = ["fois", "multiplié par", "multiplie par"]
+sense = "op:*"
+
+[[word]]
+forms = ["divisé par", "divise par", "sur"]
+sense = "op:/"
+
+[[word]]
+forms = ["plus"]
+sense = "op:+"
+
+[[word]]
+forms = ["moins"]
+sense = "op:-"
+
+[[word]]
+forms = ["puissance", "exposant", "à la puissance"]
+sense = "op:^"
+
+[[word]]
+forms = ["modulo"]
+sense = "op:mod"
+
+[[word]]
+forms = ["au carré"]
+sense = "fend:^2"
+
+[[word]]
+forms = ["au cube"]
+sense = "fend:^3"
+
+[[word]]
+forms = ["un", "une"]
+sense = "one"
+when = { before = "unit" }
+
+# ---------------------------------------------------------------- octets
+
+[[word]]
+forms = ["o", "octet", "octets"]
+sense = "unit:byte"
+when = { after = ["number", "sense:convert_to"] }
+
+[[word]]
+forms = ["octet", "octets"]
+sense = "unit:byte"
+priority = -1
+
+[[word]]
+forms = ["Ko", "ko", "kio-octet"]
+sense = "unit:kB"
+case_sensitive = true
+
+[[word]]
+forms = ["Mo"]
+sense = "unit:MB"
+case_sensitive = true
+
+[[word]]
+forms = ["Go"]
+sense = "unit:GB"
+case_sensitive = true
+
+[[word]]
+forms = ["To"]
+sense = "unit:TB"
+case_sensitive = true
+
+[[word]]
+forms = ["Po"]
+sense = "unit:PB"
+case_sensitive = true
+
+[[word]]
+forms = ["Kio"]
+sense = "unit:KiB"
+
+[[word]]
+forms = ["Mio"]
+sense = "unit:MiB"
+
+[[word]]
+forms = ["Gio"]
+sense = "unit:GiB"
+
+[[word]]
+forms = ["Tio"]
+sense = "unit:TiB"
+
+[[word]]
+forms = ["Pio"]
+sense = "unit:PiB"
+
+# ---------------------------------------------------------------- temps
+
+[[word]]
+forms = ["j"]
+sense = "unit:day"
+when = { after = ["number", "sense:convert_to"] }
+case_sensitive = true
+
+[[word]]
+forms = ["jour", "jours"]
+sense = "unit:day"
+
+[[word]]
+forms = ["sem", "semaine", "semaines"]
+sense = "unit:week"
+
+[[word]]
+forms = ["an", "ans", "année", "années"]
+sense = "unit:year"
+when = { after = "number" }
+priority = 10
+
+[[word]]
+forms = ["mois"]
+sense = "unit:month"
+
+[[word]]
+forms = ["min"]
+sense = "unit:min"
+
+[[word]]
+forms = ["minute", "minutes"]
+sense = "unit:minute"
+
+[[word]]
+forms = ["heure", "heures"]
+sense = "unit:hour"
+
+[[word]]
+forms = ["seconde", "secondes"]
+sense = "unit:second"
+
+# ---------------------------------------------------------------- longueurs, masses, volumes
+
+[[word]]
+forms = ["mètre", "mètres"]
+sense = "unit:meter"
+
+[[word]]
+forms = ["kilomètre", "kilomètres"]
+sense = "unit:kilometer"
+
+[[word]]
+forms = ["centimètre", "centimètres"]
+sense = "unit:centimeter"
+
+[[word]]
+forms = ["millimètre", "millimètres"]
+sense = "unit:millimeter"
+
+[[word]]
+forms = ["pied", "pieds"]
+sense = "unit:foot"
+
+[[word]]
+forms = ["pouce", "pouces"]
+sense = "unit:inch"
+
+[[word]]
+forms = ["année-lumière", "années-lumière", "al"]
+sense = "unit:light_year"
+
+[[word]]
+forms = ["gramme", "grammes"]
+sense = "unit:gram"
+
+[[word]]
+forms = ["kilo", "kilos", "kilogramme", "kilogrammes"]
+sense = "unit:kilogram"
+
+[[word]]
+forms = ["livre", "livres"]
+sense = "unit:pound"
+
+[[word]]
+forms = ["once", "onces"]
+sense = "unit:ounce"
+
+[[word]]
+forms = ["tonne", "tonnes"]
+sense = "unit:tonne"
+
+[[word]]
+forms = ["litre", "litres"]
+sense = "unit:liter"
+
+[[word]]
+forms = ["tasse", "tasses"]
+sense = "unit:cup"
+
+[[word]]
+forms = ["cuillère à soupe", "cuillères à soupe", "càs", "cas"]
+sense = "unit:tablespoon"
+
+[[word]]
+forms = ["cuillère à café", "cuillères à café", "càc", "cac"]
+sense = "unit:teaspoon"
+
+[[word]]
+forms = ["noeud", "noeuds", "nœud", "nœuds"]
+sense = "unit:knot"
+
+# ---------------------------------------------------------------- angles et températures
+
+[[word]]
+forms = ["degré", "degrés"]
+sense = "unit:°"
+
+[[word]]
+forms = ["degré celsius", "degrés celsius", "celsius"]
+sense = "unit:°C"
+
+[[word]]
+forms = ["degré fahrenheit", "degrés fahrenheit", "fahrenheit"]
+sense = "unit:°F"
+
+# ---------------------------------------------------------------- fonctions
+
+[[word]]
+forms = ["racine", "racine carrée", "racine de", "racine carrée de"]
+sense = "func:sqrt"
+
+[[word]]
+forms = ["racine cubique", "racine cubique de"]
+sense = "func:cbrt"
+
+[[word]]
+forms = ["pgcd"]
+sense = "func:gcd"
+
+[[word]]
+forms = ["ppcm"]
+sense = "func:lcm"
+
+[[word]]
+forms = ["premier", "est premier"]
+sense = "func:isprime"
+
+[[word]]
+forms = ["arrondi", "arrondir"]
+sense = "func:round"
+
+[[word]]
+forms = ["valeur absolue"]
+sense = "func:abs"
+
+[[word]]
+forms = ["partie entière"]
+sense = "func:floor"
+
+[[word]]
+forms = ["sinus"]
+sense = "func:sin"
+
+[[word]]
+forms = ["cosinus"]
+sense = "func:cos"
+
+[[word]]
+forms = ["tangente"]
+sense = "func:tan"
+
+[[word]]
+forms = ["factorielle"]
+sense = "func:factorial"
+
+# ---------------------------------------------------------------- bases et formats
+
+[[word]]
+forms = ["hexadécimal"]
+sense = "fend:hex"
+
+[[word]]
+forms = ["binaire"]
+sense = "fend:binary"
+
+[[word]]
+forms = ["décimal", "décimale"]
+sense = "fend:decimal"
