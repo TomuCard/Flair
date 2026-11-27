@@ -443,11 +443,12 @@ pub struct Applied {
     pub renamed: Vec<(String, String)>,
 }
 
-fn write_atomic(path: &Path, data: &[u8]) -> std::io::Result<()> {
+/// Writes through a temporary file then renames, so readers never see half a file.
+pub(crate) fn write_atomic(path: &Path, data: &[u8]) -> std::io::Result<()> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
     }
-    let tmp = path.with_extension("tmp-import");
+    let tmp = path.with_extension("tmp-write");
     fs::write(&tmp, data)?;
     fs::rename(&tmp, path)
 }

@@ -6,7 +6,14 @@ Launcher clavier façon Spotlight / Raycast / PowerToys Run, en Rust, pour **Win
 |---|---|---|
 | ![](docs/screenshots/dark-en-apps.png) | ![](docs/screenshots/dark-en-calc.png) | ![](docs/screenshots/light-fr-apps.png) |
 
-> **État : jalon 3 (distribution et mises à jour).** Flair est résident (icône de notification, raccourci global, instance unique, aucun réveil fenêtre cachée), s'installe lui-même, se met à jour par `> mise à jour` avec des versions signées publiées à chaque push sur `main`, et sauvegarde tout dans un fichier `.flair`. Les résultats de recherche sont encore **factices** : les vraies sources (applications, calcul, fichiers, web, système) arrivent aux jalons 4 à 7. Le cahier des charges complet est dans [`PROMPT.md`](PROMPT.md).
+> **État : jalon 4 en cours (applications ; le calcul suit).** Flair est résident (icône de notification, raccourci global, instance unique, aucun réveil fenêtre cachée), s'installe lui-même, se met à jour par `> mise à jour` avec des versions signées publiées à chaque push sur `main`, et sauvegarde tout dans un fichier `.flair`. Il trouve et lance les **applications installées** (Windows et Linux, avec leurs icônes), classées par `nucleo-matcher` et par la frecency. Le calcul arrive avec la deuxième partie du jalon 4, les fichiers au jalon 6, le web et les commandes système au jalon 7. Le cahier des charges complet est dans [`PROMPT.md`](PROMPT.md).
+
+## Applications
+
+- **Windows** : raccourcis `.lnk` du menu Démarrer (le vôtre et celui de tous les utilisateurs), lus avec `IShellLinkW`, et applications du Store (`shell:AppsFolder`, lancées par leur AppUserModelID). Les noms sont ceux du menu Démarrer, dans la langue de Windows ; le nom du raccourci, l'exécutable cible (`explorer`) et une table d'alias anglais des applications intégrées (`Settings`, `File Explorer`, `Task Manager`, `Calculator`…) sont aussi recherchables. Les désinstalleurs et les raccourcis vers de la documentation sont ignorés. `Ctrl+Entrée` lance en administrateur. Icônes extraites par le shell (`IShellItemImageFactory`), en cache dans `%LocalAppData%\Flair\cache\icons`.
+- **Linux** : fichiers `.desktop` de `$XDG_DATA_HOME`, `$XDG_DATA_DIRS`, Flatpak et Snap, en respectant `NoDisplay`, `Hidden`, `OnlyShowIn`/`NotShowIn` et `TryExec`. `Name`, `Name[fr]`, `GenericName` et `Keywords` dans les deux langues sont indexés : `Fichiers` et `Files` trouvent tous les deux le gestionnaire de fichiers. Codes de `Exec` (`%f`, `%U`, `%i`, `%c`, `%k`…) et `Terminal=true` gérés. Icônes du thème courant (`freedesktop-icons`), PNG et SVG.
+- **Mise à jour à chaud** : les dossiers sources sont surveillés (`notify`) ; un changement relance l'indexation après 2 s de calme. « Réindexer » dans l'icône de notification force un nouveau parcours.
+- **Classement** : `nucleo-matcher` (accents et casse ignorés), bonus si la requête est le début du nom, d'un mot ou des initiales (`vsc` → **V**isual **S**tudio **C**ode), applications avant fichiers à score égal, et **frecency** : chaque lancement est enregistré dans `frecency.json` (nombre et date du dernier usage, inclus dans les exports `.flair`), et ce qui est lancé souvent et récemment remonte. Les correspondances trop dispersées (`calc` dans « Lo**c**al Security Poli**c**y ») sont écartées.
 
 ## Installer
 
@@ -100,7 +107,7 @@ Une seule instance tourne à la fois : un second `flair` envoie sa commande à l
 
 Si le raccourci est déjà pris par une autre application, Flair démarre quand même et l'explique dans sa fenêtre (`Entrée` ouvre la configuration).
 
-**Icône de notification** : Afficher, Réindexer (jalon 6), Ouvrir la configuration, Rechercher une mise à jour (jalon 3), Lancer au démarrage, Statistiques, Quitter. Un clic gauche affiche ou cache la fenêtre. L'icône est le logo rendu à l'exécution (`resvg`) dans la couleur de la barre des tâches (`SystemUsesLightTheme` sous Windows).
+**Icône de notification** : Afficher, Réindexer (applications ; les fichiers au jalon 6), Ouvrir la configuration, Rechercher une mise à jour (jalon 3), Lancer au démarrage, Statistiques, Quitter. Un clic gauche affiche ou cache la fenêtre. L'icône est le logo rendu à l'exécution (`resvg`) dans la couleur de la barre des tâches (`SystemUsesLightTheme` sous Windows).
 - Windows : `tray-icon` ;
 - Linux : StatusNotifierItem via `ksni` sur un runtime Tokio d'un seul thread. Le backend KSNI de `tray-icon` impose la pile `async-io`, dont le pool `blocking` garde un thread qui se réveille toutes les 500 ms pour toujours : rejeté pour la même raison que ci-dessus. Sous GNOME, l'icône demande l'extension « AppIndicator ».
 
@@ -181,7 +188,7 @@ La CI (GitHub Actions, `.github/workflows/ci.yml`) lance `fmt`, `clippy` et `tes
 ```
 crates/
 ├── flair-core/       types, trait Provider, registre des réglages, config, thèmes, i18n (sans UI)
-├── flair-providers/  sources de résultats (jalons 4 à 7)
+├── flair-providers/  sources de résultats (applications ; calcul, fichiers, web, système à venir)
 ├── flair-platform/   code propre à l'OS : chemins, raccourci global, icône de notification, IPC,
 │                     démarrage auto, mémoire, écran sous la souris (seul crate avec `unsafe`)
 └── flair-app/        binaire `flair` : interface Iced, logs, lancement
@@ -265,7 +272,9 @@ Réglages (table générée depuis le registre, `UPDATE_README=1 cargo test -p f
 - **Wayland, hauteur de la fenêtre** : winit applique un redimensionnement demandé par l'application sans envoyer d'événement `Resized`, et Iced ne refait alors pas sa mise en page. Sous Wayland, la fenêtre transparente garde donc sa hauteur maximale et seul le cadre visible change de taille. Sous Windows et X11, la fenêtre est redimensionnée normalement.
 - **Ombre** : seulement celle du système (DWM sous Windows, avec les coins arrondis). Flair ne dessine pas d'ombre lui-même : le rendu logiciel d'Iced ne redessine que le contour d'un rectangle, pas son ombre, qui se repeignait sur elle-même jusqu'à devenir noire.
 - **Curseur du champ** : Iced 0.14 dessine le curseur avec la couleur du texte. La spec le veut en couleur d'accent, ce qui demande un petit widget dédié (à faire).
-- **Recherche factice** : la correspondance floue du jalon 1 est volontairement simple. `nucleo-matcher` et la frecency arrivent au jalon 4.
+- **Premier affichage après le démarrage** : les applications sont indexées en arrière-plan (environ 1 à 2 s sous Windows, icônes comprises). Une recherche tapée avant la fin ne les trouve pas encore ; une recherche déjà affichée ne se met pas à jour quand une icône arrive.
+- **Nouvelles applications du Store** : les raccourcis sont surveillés, pas le dossier `shell:AppsFolder`. Une application du Store installée pendant que Flair tourne apparaît après « Réindexer » ou au prochain démarrage.
+- **Icônes Linux** : les icônes XPM (anciennes applications) ne sont pas lues ; l'icône générique les remplace.
 
 ## Développement
 

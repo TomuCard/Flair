@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 fluent-bundle.workspace = true
 minisign-verify.workspace = true
+nucleo-matcher.workspace = true
 semver.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

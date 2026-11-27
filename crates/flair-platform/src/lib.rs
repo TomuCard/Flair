@@ -5,12 +5,14 @@
 //! `// SAFETY:` comment (enforced by clippy).
 #![allow(unsafe_code)]
 
+pub mod apps;
 pub mod autostart;
 pub mod console;
 #[cfg(target_os = "linux")]
 mod dbus;
 pub mod dialog;
 pub mod hotkey;
+pub mod image;
 pub mod install;
 pub mod ipc;
 pub mod memory;
