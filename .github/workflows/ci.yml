@@ -28,3 +28,8 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Tests
         run: cargo test --workspace
+      # Conflicts between language files, for every combination of the
+      # built-in languages (fails if one is unresolved).
+      - name: Lexicon check
+        if: runner.os == 'Linux'
+        run: cargo run -p flair-app -- lexicon check

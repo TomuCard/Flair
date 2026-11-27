@@ -1,0 +1,495 @@
+# Mots français de la calculatrice. Voir README.md pour le format.
+
+[meta]
+code = "fr"
+name = "Français"
+decimal_separator = ","
+date_order = "dmy"
+
+# ---------------------------------------------------------------- conversion et opérateurs
+
+[[word]]
+forms = ["en", "vers", "convertir en", "converti en"]
+sense = "convert_to"
+priority = 30
+
+[[word]]
+forms = ["de", "du", "des", "d'"]
+sense = "of"
+when = { after = "percent" }
+
+[[word]]
+forms = ["pourcent", "pour cent", "pourcents"]
+sense = "percent"
+
+[[word]]
+forms = ["fois", "multiplié par", "multiplie par"]
+sense = "op:*"
+
+[[word]]
+forms = ["divisé par", "divise par", "sur"]
+sense = "op:/"
+
+[[word]]
+forms = ["plus"]
+sense = "op:+"
+
+[[word]]
+forms = ["moins"]
+sense = "op:-"
+
+[[word]]
+forms = ["puissance", "exposant", "à la puissance"]
+sense = "op:^"
+
+[[word]]
+forms = ["modulo"]
+sense = "op:mod"
+
+[[word]]
+forms = ["au carré"]
+sense = "fend:^2"
+
+[[word]]
+forms = ["au cube"]
+sense = "fend:^3"
+
+[[word]]
+forms = ["un", "une"]
+sense = "one"
+when = { before = "unit" }
+
+# ---------------------------------------------------------------- octets
+
+[[word]]
+forms = ["o", "octet", "octets"]
+sense = "unit:byte"
+when = { after = ["number", "sense:convert_to"] }
+
+[[word]]
+forms = ["octet", "octets"]
+sense = "unit:byte"
+priority = -1
+
+[[word]]
+forms = ["Ko", "ko", "kio-octet"]
+sense = "unit:kB"
+case_sensitive = true
+
+[[word]]
+forms = ["Mo"]
+sense = "unit:MB"
+case_sensitive = true
+
+[[word]]
+forms = ["Go"]
+sense = "unit:GB"
+case_sensitive = true
+
+[[word]]
+forms = ["To"]
+sense = "unit:TB"
+case_sensitive = true
+
+[[word]]
+forms = ["Po"]
+sense = "unit:PB"
+case_sensitive = true
+
+[[word]]
+forms = ["Kio"]
+sense = "unit:KiB"
+
+[[word]]
+forms = ["Mio"]
+sense = "unit:MiB"
+
+[[word]]
+forms = ["Gio"]
+sense = "unit:GiB"
+
+[[word]]
+forms = ["Tio"]
+sense = "unit:TiB"
+
+[[word]]
+forms = ["Pio"]
+sense = "unit:PiB"
+
+# ---------------------------------------------------------------- temps
+
+[[word]]
+forms = ["j"]
+sense = "unit:day"
+when = { after = ["number", "sense:convert_to"] }
+case_sensitive = true
+
+[[word]]
+forms = ["jour", "jours"]
+sense = "unit:day"
+
+[[word]]
+forms = ["semaine", "semaines", "sem"]
+sense = "unit:week"
+
+[[word]]
+forms = ["an", "ans", "année", "années"]
+sense = "unit:year"
+when = { after = "number" }
+priority = 10
+
+[[word]]
+forms = ["mois"]
+sense = "unit:month"
+
+[[word]]
+forms = ["min"]
+sense = "unit:min"
+
+[[word]]
+forms = ["minute", "minutes"]
+sense = "unit:minute"
+
+[[word]]
+forms = ["heure", "heures"]
+sense = "unit:hour"
+
+[[word]]
+forms = ["seconde", "secondes"]
+sense = "unit:second"
+
+# ---------------------------------------------------------------- longueurs, masses, volumes
+
+[[word]]
+forms = ["mètre", "mètres"]
+sense = "unit:meter"
+
+[[word]]
+forms = ["kilomètre", "kilomètres"]
+sense = "unit:kilometer"
+
+[[word]]
+forms = ["centimètre", "centimètres"]
+sense = "unit:centimeter"
+
+[[word]]
+forms = ["millimètre", "millimètres"]
+sense = "unit:millimeter"
+
+[[word]]
+forms = ["pied", "pieds"]
+sense = "unit:foot"
+
+[[word]]
+forms = ["pouce", "pouces"]
+sense = "unit:inch"
+
+[[word]]
+forms = ["année-lumière", "années-lumière", "al"]
+sense = "unit:light_year"
+
+[[word]]
+forms = ["gramme", "grammes"]
+sense = "unit:gram"
+
+[[word]]
+forms = ["kilo", "kilos", "kilogramme", "kilogrammes"]
+sense = "unit:kilogram"
+
+[[word]]
+forms = ["livre", "livres"]
+sense = "unit:pound"
+
+[[word]]
+forms = ["once", "onces"]
+sense = "unit:ounce"
+
+[[word]]
+forms = ["tonne", "tonnes"]
+sense = "unit:tonne"
+
+[[word]]
+forms = ["litre", "litres"]
+sense = "unit:liter"
+
+[[word]]
+forms = ["tasse", "tasses"]
+sense = "unit:cup"
+
+[[word]]
+forms = ["cuillère à soupe", "cuillères à soupe", "càs", "cas"]
+sense = "unit:tablespoon"
+
+[[word]]
+forms = ["cuillère à café", "cuillères à café", "càc", "cac"]
+sense = "unit:teaspoon"
+
+[[word]]
+forms = ["noeud", "noeuds", "nœud", "nœuds"]
+sense = "unit:knot"
+
+# ---------------------------------------------------------------- angles et températures
+
+[[word]]
+forms = ["degré", "degrés"]
+sense = "unit:°"
+
+[[word]]
+forms = ["degré celsius", "degrés celsius", "celsius"]
+sense = "unit:°C"
+
+[[word]]
+forms = ["degré fahrenheit", "degrés fahrenheit", "fahrenheit"]
+sense = "unit:°F"
+
+# ---------------------------------------------------------------- fonctions
+
+[[word]]
+forms = ["racine", "racine carrée", "racine de", "racine carrée de"]
+sense = "func:sqrt"
+
+[[word]]
+forms = ["racine cubique", "racine cubique de"]
+sense = "func:cbrt"
+
+[[word]]
+forms = ["pgcd"]
+sense = "func:gcd"
+
+[[word]]
+forms = ["ppcm"]
+sense = "func:lcm"
+
+[[word]]
+forms = ["premier", "est premier"]
+sense = "func:isprime"
+
+[[word]]
+forms = ["arrondi", "arrondir"]
+sense = "func:round"
+
+[[word]]
+forms = ["valeur absolue"]
+sense = "func:abs"
+
+[[word]]
+forms = ["partie entière"]
+sense = "func:floor"
+
+[[word]]
+forms = ["sinus"]
+sense = "func:sin"
+
+[[word]]
+forms = ["cosinus"]
+sense = "func:cos"
+
+[[word]]
+forms = ["tangente"]
+sense = "func:tan"
+
+[[word]]
+forms = ["factorielle"]
+sense = "func:factorial"
+
+# ---------------------------------------------------------------- bases et formats
+
+[[word]]
+forms = ["hexadécimal"]
+sense = "fend:hex"
+
+[[word]]
+forms = ["binaire"]
+sense = "fend:binary"
+
+[[word]]
+forms = ["décimal", "décimale"]
+sense = "fend:decimal"
+
+# ---------------------------------------------------------------- dates et heures
+
+[[word]]
+forms = ["maintenant"]
+sense = "now"
+
+[[word]]
+forms = ["aujourd'hui", "aujourd' hui"]
+sense = "today"
+
+[[word]]
+forms = ["demain"]
+sense = "tomorrow"
+
+[[word]]
+forms = ["hier"]
+sense = "yesterday"
+
+[[word]]
+forms = ["il y a"]
+sense = "ago"
+when = { position = "start", before = "duration" }
+
+[[word]]
+forms = ["dans"]
+sense = "relative_in"
+when = { position = "start", before = "duration" }
+
+[[word]]
+forms = ["jusqu'au", "jusqu'à", "jusqu'a", "jusqu'au le", "avant le"]
+sense = "until"
+
+[[word]]
+forms = ["depuis le", "depuis"]
+sense = "since"
+
+[[word]]
+forms = ["quel jour", "quel jour était le", "quel jour sera le", "quel jour le", "quel jour tombe le"]
+sense = "what_day"
+
+[[word]]
+forms = ["heure à", "l'heure à", "quelle heure à", "heure a", "quelle heure est-il à"]
+sense = "time_in"
+
+# `4 Go à 100 Mbit/s`: `a` sans accent seulement entre une quantité et un débit.
+[[word]]
+forms = ["à", "a"]
+sense = "rate_at"
+when = { between = ["quantity", "quantity"] }
+priority = 10
+
+# `1er janvier`.
+[[word]]
+forms = ["er"]
+sense = "ignore"
+when = { after = "number" }
+
+[[word]]
+forms = ["janvier", "janv"]
+sense = "month:1"
+
+[[word]]
+forms = ["février", "févr", "fév"]
+sense = "month:2"
+
+[[word]]
+forms = ["mars"]
+sense = "month:3"
+
+[[word]]
+forms = ["avril", "avr"]
+sense = "month:4"
+
+[[word]]
+forms = ["mai"]
+sense = "month:5"
+
+[[word]]
+forms = ["juin"]
+sense = "month:6"
+
+[[word]]
+forms = ["juillet", "juil"]
+sense = "month:7"
+
+[[word]]
+forms = ["août", "aout"]
+sense = "month:8"
+
+[[word]]
+forms = ["septembre"]
+sense = "month:9"
+
+[[word]]
+forms = ["octobre"]
+sense = "month:10"
+
+[[word]]
+forms = ["novembre"]
+sense = "month:11"
+
+[[word]]
+forms = ["décembre", "déc"]
+sense = "month:12"
+
+[[word]]
+forms = ["lundi"]
+sense = "weekday:1"
+
+[[word]]
+forms = ["mardi"]
+sense = "weekday:2"
+
+[[word]]
+forms = ["mercredi"]
+sense = "weekday:3"
+
+[[word]]
+forms = ["jeudi"]
+sense = "weekday:4"
+
+[[word]]
+forms = ["vendredi"]
+sense = "weekday:5"
+
+[[word]]
+forms = ["samedi"]
+sense = "weekday:6"
+
+[[word]]
+forms = ["dimanche"]
+sense = "weekday:7"
+
+# Villes dont le nom français diffère du nom anglais des fuseaux.
+[[word]]
+forms = ["Londres"]
+sense = "tz:Europe/London"
+
+[[word]]
+forms = ["Pékin", "Pekin"]
+sense = "tz:Asia/Shanghai"
+
+[[word]]
+forms = ["Moscou"]
+sense = "tz:Europe/Moscow"
+
+[[word]]
+forms = ["Bruxelles"]
+sense = "tz:Europe/Brussels"
+
+[[word]]
+forms = ["Genève"]
+sense = "tz:Europe/Zurich"
+
+[[word]]
+forms = ["Montréal"]
+sense = "tz:America/Toronto"
+
+[[word]]
+forms = ["Varsovie"]
+sense = "tz:Europe/Warsaw"
+
+[[word]]
+forms = ["Vienne"]
+sense = "tz:Europe/Vienna"
+
+[[word]]
+forms = ["Lisbonne"]
+sense = "tz:Europe/Lisbon"
+
+[[word]]
+forms = ["Le Caire"]
+sense = "tz:Africa/Cairo"
+
+[[word]]
+forms = ["Mexico"]
+sense = "tz:America/Mexico_City"
+
+# ---------------------------------------------------------------- devises
+
+[[word]]
+forms = ["livre sterling", "livres sterling"]
+sense = "unit:GBP"
+
+[[word]]
+forms = ["franc suisse", "francs suisses"]
+sense = "unit:CHF"

@@ -10,7 +10,9 @@
 
 pub mod archive;
 pub mod frecency;
+pub mod history;
 pub mod i18n;
+pub mod lexicon;
 pub mod provider;
 pub mod query;
 pub mod rank;

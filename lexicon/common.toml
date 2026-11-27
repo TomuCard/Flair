@@ -1,0 +1,295 @@
+# Neutral part of the calculator vocabulary: always active, cannot be
+# disabled. Symbols, international units whose case matters, compact bit
+# units, constants and functions. See README.md for the format.
+
+[meta]
+code = "common"
+name = "Common"
+
+# ---------------------------------------------------------------- operators
+
+[[word]]
+forms = ["×", "·", "∙", "⋅"]
+sense = "op:*"
+
+[[word]]
+forms = ["x"]
+sense = "op:*"
+when = { between = ["number", "number"] }
+case_sensitive = true
+
+[[word]]
+forms = ["÷", "∶"]
+sense = "op:/"
+
+[[word]]
+forms = ["−", "–"]
+sense = "op:-"
+
+[[word]]
+forms = ["**"]
+sense = "op:^"
+
+[[word]]
+forms = ["mod"]
+sense = "op:mod"
+
+[[word]]
+forms = ["→", "->", "=>"]
+sense = "convert_to"
+priority = 30
+
+# ---------------------------------------------------------------- bytes and bits
+# Decimal (SI) and binary prefixes; the case is significant: MB (megabyte),
+# Mb (megabit), mB (millibyte, kept as typed).
+
+[[word]]
+forms = ["B"]
+sense = "unit:B"
+when = { after = "number" }
+case_sensitive = true
+
+[[word]]
+forms = ["KB"]
+sense = "unit:kB"
+case_sensitive = true
+
+[[word]]
+forms = ["kbit", "Kbit", "kb", "Kb", "kbits"]
+sense = "unit:kilobit"
+case_sensitive = true
+
+[[word]]
+forms = ["Mbit", "mbit", "Mb", "Mbits"]
+sense = "unit:megabit"
+case_sensitive = true
+
+[[word]]
+forms = ["Gbit", "gbit", "Gb", "Gbits"]
+sense = "unit:gigabit"
+case_sensitive = true
+
+[[word]]
+forms = ["Tbit", "tbit", "Tb", "Tbits"]
+sense = "unit:terabit"
+case_sensitive = true
+
+[[word]]
+forms = ["Kibit"]
+sense = "unit:kibibit"
+case_sensitive = true
+
+[[word]]
+forms = ["Mibit"]
+sense = "unit:mebibit"
+case_sensitive = true
+
+[[word]]
+forms = ["Gibit"]
+sense = "unit:gibibit"
+case_sensitive = true
+
+[[word]]
+forms = ["bps"]
+sense = "fend:(bit/s)"
+
+[[word]]
+forms = ["kbps", "Kbps"]
+sense = "fend:(kilobit/s)"
+
+[[word]]
+forms = ["Mbps"]
+sense = "fend:(megabit/s)"
+case_sensitive = true
+
+[[word]]
+forms = ["Gbps"]
+sense = "fend:(gigabit/s)"
+case_sensitive = true
+
+# ---------------------------------------------------------------- time
+# `m` is a meter, except in a compound duration (`1h30m`, `5m30s`); a lone
+# `5m` also offers `5 min` as a variant.
+
+[[word]]
+forms = ["m"]
+sense = "unit:min"
+when = { in_duration = true }
+priority = 20
+case_sensitive = true
+
+[[word]]
+forms = ["m"]
+sense = "unit:m"
+priority = 10
+case_sensitive = true
+
+[[word]]
+forms = ["m"]
+sense = "unit:min"
+when = { after = "number" }
+case_sensitive = true
+
+# ---------------------------------------------------------------- angles and temperatures
+
+[[word]]
+forms = ["°", "deg"]
+sense = "unit:°"
+
+[[word]]
+forms = ["°C", "℃", "degC"]
+sense = "unit:°C"
+
+[[word]]
+forms = ["°F", "℉", "degF"]
+sense = "unit:°F"
+
+# ---------------------------------------------------------------- constants
+
+[[word]]
+forms = ["π", "pi"]
+sense = "const:pi"
+
+[[word]]
+forms = ["φ", "phi"]
+sense = "const:phi"
+
+[[word]]
+forms = ["k_B", "kB_const"]
+sense = "const:boltzmann"
+case_sensitive = true
+
+[[word]]
+forms = ["N_A"]
+sense = "const:avogadro"
+case_sensitive = true
+
+[[word]]
+forms = ["m_e"]
+sense = "const:electron_mass"
+case_sensitive = true
+
+[[word]]
+forms = ["m_p"]
+sense = "const:proton_mass"
+case_sensitive = true
+
+[[word]]
+forms = ["q_e", "e_charge"]
+sense = "const:electron_charge"
+case_sensitive = true
+
+[[word]]
+forms = ["G_const"]
+sense = "const:gravitational_constant"
+case_sensitive = true
+
+[[word]]
+forms = ["h_planck", "planck"]
+sense = "const:planck"
+
+# ---------------------------------------------------------------- functions
+
+# `nCr(5, 2)` and `5 nCr 2` both work.
+[[word]]
+forms = ["nCr", "ncr", "choose"]
+sense = "func:ncr"
+
+[[word]]
+forms = ["nPr", "npr"]
+sense = "func:npr"
+
+[[word]]
+forms = ["gcd", "hcf"]
+sense = "func:gcd"
+
+[[word]]
+forms = ["lcm"]
+sense = "func:lcm"
+
+[[word]]
+forms = ["isprime", "is_prime"]
+sense = "func:isprime"
+
+[[word]]
+forms = ["√"]
+sense = "func:sqrt"
+
+[[word]]
+forms = ["∛"]
+sense = "func:cbrt"
+
+[[word]]
+forms = ["arcsin"]
+sense = "func:asin"
+
+[[word]]
+forms = ["arccos"]
+sense = "func:acos"
+
+[[word]]
+forms = ["arctan"]
+sense = "func:atan"
+
+# ---------------------------------------------------------------- numeral bases
+
+[[word]]
+forms = ["hexa", "hex"]
+sense = "fend:hex"
+
+[[word]]
+forms = ["bin"]
+sense = "fend:binary"
+
+[[word]]
+forms = ["oct"]
+sense = "fend:octal"
+priority = 5
+
+# ---------------------------------------------------------------- bitwise
+
+[[word]]
+forms = ["&", "and"]
+sense = "fend:and"
+
+[[word]]
+forms = ["|", "or"]
+sense = "fend:or"
+
+[[word]]
+forms = ["xor"]
+sense = "fend:xor"
+
+[[word]]
+forms = ["~", "not"]
+sense = "func:bitnot"
+
+# ---------------------------------------------------------------- dates and times
+
+[[word]]
+forms = ["unix", "timestamp", "epoch"]
+sense = "unix"
+when = { after = "sense:convert_to" }
+
+[[word]]
+forms = ["UTC", "GMT"]
+sense = "tz:UTC"
+case_sensitive = true
+
+# ---------------------------------------------------------------- currencies (with `currency = true`)
+
+[[word]]
+forms = ["€"]
+sense = "unit:EUR"
+
+[[word]]
+forms = ["$", "US$"]
+sense = "unit:USD"
+
+[[word]]
+forms = ["£"]
+sense = "unit:GBP"
+
+[[word]]
+forms = ["¥"]
+sense = "unit:JPY"

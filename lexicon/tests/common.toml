@@ -1,0 +1,624 @@
+# Language-neutral cases (symbols, functions, international units), run with
+# every combination of input languages. Extra keys:
+# - `none = true`: not a calculation; `too_big = true`: "too big to compute";
+# - `langs = ["fr", "en"]`: only when all these languages are active (mixed
+#   inputs);
+# - settings: `decimal` ("auto", ",", "."), `system` (system language),
+#   `binary_prefixes`, `angle` ("deg", "rad"), `digits` (significant).
+
+# ---------------------------------------------------------------- numbers
+
+[[case]]
+input = "1e524 * 1.5"
+expect = "1.5e524"
+
+[[case]]
+input = "2^1000"
+expect = "1.071508607e301"
+
+[[case]]
+input = "100!"
+expect = "9.332621544e157"
+
+[[case]]
+input = "6.022e23 * 2"
+expect = "1.2044e24"
+
+[[case]]
+input = "1E-9 * 3"
+expect = "3e-9"
+
+[[case]]
+input = "3×10^8"
+expect = "300000000"
+
+[[case]]
+input = "1/3 + 1/6"
+expect = "1/2"
+variants = ["0.5"]
+
+[[case]]
+input = "1/3"
+expect = "0.3333333333"
+variants = ["1/3"]
+
+[[case]]
+input = "0.1 + 0.2"
+expect = "0.3"
+
+[[case]]
+input = "2**10"
+expect = "1024"
+
+[[case]]
+input = "2pi"
+expect = "6.283185307"
+
+[[case]]
+input = "3(4+1)"
+expect = "15"
+
+[[case]]
+input = "7 mod 3"
+expect = "1"
+
+[[case]]
+input = "5!"
+expect = "120"
+
+[[case]]
+input = "-3 * -4"
+expect = "12"
+
+[[case]]
+input = "6 ÷ 4"
+expect = "1.5"
+
+[[case]]
+input = "3 x 4"
+expect = "12"
+
+[[case]]
+input = "(2 + 3) * (4 − 1)"
+expect = "15"
+
+[[case]]
+input = "2^0.5"
+expect = "1.414213562"
+
+[[case]]
+input = "240 * 15%"
+expect = "36"
+
+[[case]]
+input = "240 + 15%"
+expect = "276"
+
+[[case]]
+input = "1 500 + 1"
+expect = "1501"
+
+[[case]]
+input = "2 500 000 / 2"
+expect = "1250000"
+
+[[case]]
+input = "1 500,75 + 1"
+expect = "1501.75"
+decimal = ","
+
+[[case]]
+input = "1 000 * 2"
+expect = "2000"
+
+[[case]]
+input = "1'000'000 / 2"
+expect = "500000"
+
+[[case]]
+input = "1_000 + 1"
+expect = "1001"
+
+[[case]]
+input = "1,000,000 + 1"
+expect = "1000001"
+
+[[case]]
+input = "15 00"
+none = true
+
+[[case]]
+input = "1 5000 + 1"
+none = true
+
+# `,` decimal or thousands: the system language decides, the other reading is
+# a variant.
+[[case]]
+input = "1,500 + 1"
+system = "fr"
+langs = ["fr"]
+expect = "2.5"
+variants = ["1501"]
+
+[[case]]
+input = "1,500 + 1"
+system = "en"
+langs = ["en"]
+expect = "1501"
+variants = ["2.5"]
+
+[[case]]
+input = "1,500 + 1"
+decimal = "."
+expect = "1501"
+
+[[case]]
+input = "1,500 + 1"
+decimal = ","
+expect = "2.5"
+
+[[case]]
+input = "1,500.25 + 1"
+expect = "1501.25"
+
+[[case]]
+input = "1,5 * 2"
+expect = "3"
+
+# ---------------------------------------------------------------- functions
+
+[[case]]
+input = "sqrt(2)"
+expect = "1.414213562"
+
+[[case]]
+input = "√16"
+expect = "4"
+
+[[case]]
+input = "cbrt(27)"
+expect = "3"
+
+[[case]]
+input = "abs(-3)"
+expect = "3"
+
+[[case]]
+input = "floor(2.7)"
+expect = "2"
+
+[[case]]
+input = "ceil(2.1)"
+expect = "3"
+
+[[case]]
+input = "ln(e)"
+expect = "1"
+
+[[case]]
+input = "log(1000)"
+expect = "3"
+
+[[case]]
+input = "log2(8)"
+expect = "3"
+
+[[case]]
+input = "exp(1)"
+expect = "2.718281828"
+
+[[case]]
+input = "sin(30°)"
+expect = "0.5"
+
+[[case]]
+input = "cos(60)"
+expect = "0.5"
+
+[[case]]
+input = "tan(45)"
+expect = "1"
+
+[[case]]
+input = "asin(0.5)"
+expect = "30°"
+
+[[case]]
+input = "sinh(1)"
+expect = "1.175201194"
+
+[[case]]
+input = "sin(pi/6)"
+angle = "rad"
+expect = "0.5"
+
+[[case]]
+input = "5 nCr 2"
+expect = "10"
+
+[[case]]
+input = "nCr(5; 2)"
+expect = "10"
+
+[[case]]
+input = "5 nPr 2"
+expect = "20"
+
+[[case]]
+input = "gcd(12; 18; 8)"
+expect = "2"
+
+[[case]]
+input = "isprime(97)"
+expect = "97 is prime"
+expect_fr = "97 est premier"
+
+[[case]]
+input = "sqrt(-1)"
+expect = "i"
+
+[[case]]
+input = "(1+2i)*(3-i)"
+expect = "5 + 5i"
+
+[[case]]
+input = "phi * 2"
+expect = "3.236067977"
+
+[[case]]
+input = "c * 2"
+expect = "599584916 m/s"
+
+[[case]]
+input = "N_A * 2"
+expect = "1.204428152e24 mol^-1"
+
+[[case]]
+input = "1/7"
+digits = 4
+expect = "0.1429"
+variants = ["1/7"]
+
+# ---------------------------------------------------------------- units
+
+[[case]]
+input = "90 km/h → m/s"
+expect = "25 m/s"
+
+[[case]]
+input = "300 K → °C"
+expect = "26.85 °C"
+
+[[case]]
+input = "30 °C → °F"
+expect = "86 °F"
+
+[[case]]
+input = "1 m^2 → cm^2"
+expect = "10000 cm^2"
+
+[[case]]
+input = "1 bar → psi"
+expect = "14.50377377 psi"
+
+[[case]]
+input = "1 kWh → J"
+expect = "3600000 J"
+
+[[case]]
+input = "1 hp → W"
+expect = "745.6998716 W"
+
+[[case]]
+input = "1 GiB → MB"
+expect = "1073.741824 MB"
+expect_fr = "1073,741824 Mo"
+
+[[case]]
+input = "1 KB → B"
+expect = "1000 B"
+
+[[case]]
+input = "8 Mb → MB"
+expect = "1 MB"
+expect_fr = "1 Mo"
+
+[[case]]
+input = "1 GB/s * 3 s"
+expect = "3 GB"
+expect_fr = "3 Go"
+variants = ["2.793967724 GiB"]
+
+[[case]]
+input = "1 Gbps → MB/s"
+expect = "125 MB/s"
+expect_fr = "125 Mo/s"
+
+[[case]]
+input = "5 m → ft"
+expect = "16.40419948 ft"
+
+[[case]]
+input = "10 kW * 3 h"
+expect = "30 kWh"
+
+[[case]]
+input = "100 km / 1.5h"
+expect = "66.66666667 km/h"
+
+[[case]]
+input = "5 km → miles"
+expect = "3.106855961 miles"
+
+[[case]]
+input = "255 → hex"
+expect = "0xff"
+expect_fr = "0xff"
+
+[[case]]
+input = "1 Mo → Ko"
+binary_prefixes = true
+langs = ["fr"]
+expect = "1024 KiB"
+expect_fr = "1024 Kio"
+
+# ---------------------------------------------------------------- ambiguities
+
+# `m`: meter, with `5 min` as a variant; minute in a compound duration.
+[[case]]
+input = "5m"
+expect = "5 m"
+variants = ["5 min"]
+
+[[case]]
+input = "1h30m → min"
+expect = "90 min"
+
+[[case]]
+input = "5m30s → s"
+expect = "330 s"
+
+# ---------------------------------------------------------------- mixed languages
+
+[[case]]
+input = "4 jours to hours"
+langs = ["fr", "en"]
+expect = "96 hours"
+expect_fr = "96 heures"
+
+[[case]]
+input = "2 weeks en jours"
+langs = ["fr", "en"]
+expect = "14 days"
+expect_fr = "14 jours"
+
+[[case]]
+input = "12 in en cm"
+langs = ["fr", "en"]
+expect = "30.48 cm"
+
+[[case]]
+input = "3 times 4 fois 2"
+langs = ["fr", "en"]
+expect = "24"
+
+[[case]]
+input = "15% de 240 plus 1"
+langs = ["fr", "en"]
+expect = "37"
+
+[[case]]
+input = "an hour en minutes"
+langs = ["fr", "en"]
+expect = "60 minutes"
+
+# ---------------------------------------------------------------- not calculations
+
+[[case]]
+input = "firefox"
+none = true
+
+[[case]]
+input = "rapport 2024.pdf"
+none = true
+
+[[case]]
+input = "c++"
+none = true
+
+[[case]]
+input = "42"
+none = true
+
+[[case]]
+input = "pi"
+none = true
+
+[[case]]
+input = "Windows 11"
+none = true
+
+[[case]]
+input = "notes.md"
+none = true
+
+[[case]]
+input = "1/0"
+none = true
+
+[[case]]
+input = "5 km + 3 kg"
+none = true
+
+[[case]]
+input = "5 km → kg"
+none = true
+
+[[case]]
+input = "2 +"
+none = true
+
+# ---------------------------------------------------------------- limits
+
+[[case]]
+input = "10^10^10^10"
+too_big = true
+
+[[case]]
+input = "1000000!"
+too_big = true
+
+# ---------------------------------------------------------------- durations and times of day (milestone 5)
+
+[[case]]
+input = "5h36 + 65min"
+expect = "6h 41m"
+expect_fr = "6h41"
+variants = ["6:41", "401 min", "6.683 h"]
+
+[[case]]
+input = "1h45 * 3"
+expect = "5h 15m"
+expect_fr = "5h15"
+
+[[case]]
+input = "3h - 47min"
+expect = "2h 13m"
+expect_fr = "2h13"
+
+[[case]]
+input = "3h45 → min"
+expect = "225 min"
+
+[[case]]
+input = "2.5 h → h:min"
+expect = "2h 30m"
+expect_fr = "2h30"
+
+[[case]]
+input = "10000 s → h:min:s"
+expect = "2h 46m 40s"
+expect_fr = "2h46m40s"
+
+[[case]]
+input = "90 min → h"
+expect = "1.5 h"
+
+[[case]]
+input = "14h30 + 2h45"
+expect = "17h 15m"
+expect_fr = "17h15"
+
+[[case]]
+input = "14:30 + 2:45"
+expect = "17:15"
+expect_fr = "17h15"
+
+[[case]]
+input = "23h + 3h"
+expect = "2:00 (next day)"
+expect_fr = "2h (lendemain)"
+
+[[case]]
+input = "1h - 3h"
+expect = "22:00 (previous day)"
+expect_fr = "22h (veille)"
+
+[[case]]
+input = "18h - 9h15"
+expect = "8h 45m"
+expect_fr = "8h45"
+
+[[case]]
+input = "2:45:10 * 2"
+expect = "5h 30m 20s"
+expect_fr = "5h30m20s"
+
+[[case]]
+input = "1h05m30s → s"
+expect = "3930 s"
+
+# ---------------------------------------------------------------- dates (milestone 5); the tests run on 2026-11-26 14:12, Paris
+
+[[case]]
+input = "2026-11-26 → unix"
+expect = "1795647600"
+
+[[case]]
+input = "@1700000000"
+langs = ["fr"]
+expect = "14/11/2023 22:13:20 UTC"
+expect_fr = "14/11/2023 22:13:20 UTC"
+
+[[case]]
+input = "25/12/2026 - 26/11/2026"
+langs = ["fr"]
+expect = "29 days"
+expect_fr = "29 jours"
+
+[[case]]
+input = "01/02/2026 - 01/01/2026"
+langs = ["fr"]
+date = "dmy"
+expect = "31 days"
+expect_fr = "31 jours"
+
+[[case]]
+input = "01/02/2026 - 01/01/2026"
+langs = ["fr"]
+date = "mdy"
+expect = "1 day"
+expect_fr = "1 jour"
+
+[[case]]
+input = "now + 3 jours"
+langs = ["fr", "en"]
+expect = "November 29, 2026, 14:12 (Sunday)"
+expect_fr = "29 novembre 2026 à 14h12 (dimanche)"
+
+[[case]]
+input = "maintenant + 2 days"
+langs = ["fr", "en"]
+expect = "November 28, 2026, 14:12 (Saturday)"
+expect_fr = "28 novembre 2026 à 14h12 (samedi)"
+
+# ---------------------------------------------------------------- bitwise and bases (milestone 5)
+
+[[case]]
+input = "0xff & 0x0f"
+expect = "15"
+
+[[case]]
+input = "5 xor 3"
+expect = "6"
+
+[[case]]
+input = "1 << 4"
+expect = "16"
+
+[[case]]
+input = "not 5"
+expect = "-6"
+
+[[case]]
+input = "2 + ~5"
+expect = "-4"
+
+[[case]]
+input = "6 | 3"
+expect = "7"
+
+[[case]]
+input = "42 → base 36"
+expect = "16"
+
+# ---------------------------------------------------------------- currencies (milestone 5)
+
+[[case]]
+input = "$100 → €"
+rates = true
+expect = "90.90909091 EUR"
+
+[[case]]
+input = "100 € → $"
+none = true

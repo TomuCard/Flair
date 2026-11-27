@@ -1,0 +1,453 @@
+# English cases: input → displayed result.
+# `expect`: English interface; `expect_fr`: French interface (default:
+# `expect` with decimal commas). Each `id` has its twin in fr.toml, which must
+# give the same result. Run with English alone, then combined with the other
+# languages; without English, these inputs must no longer be calculations
+# (unless `shared = true`).
+
+[[case]]
+id = "percent-of"
+input = "15% of 240"
+expect = "36"
+
+[[case]]
+id = "percent-word-of"
+input = "100 percent of 5"
+expect = "5"
+
+[[case]]
+id = "percent-add"
+input = "240 + 15 percent"
+expect = "276"
+
+[[case]]
+id = "percent-sub"
+input = "240 minus 15%"
+expect = "204"
+
+[[case]]
+id = "percent-ratio"
+input = "36 over 240 to %"
+expect = "15%"
+
+[[case]]
+id = "times"
+input = "3 times 4"
+expect = "12"
+
+[[case]]
+id = "times-chain"
+input = "3 times 4 times 5"
+expect = "60"
+
+[[case]]
+id = "multiplied"
+input = "6 multiplied by 7"
+expect = "42"
+
+[[case]]
+id = "divided"
+input = "10 divided by 4"
+expect = "2.5"
+variants = ["5/2"]
+
+[[case]]
+id = "plus-minus"
+input = "7 plus 5 minus 2"
+expect = "10"
+
+[[case]]
+id = "power"
+input = "2 to the power of 10"
+expect = "1024"
+
+[[case]]
+id = "squared"
+input = "12 squared"
+expect = "144"
+
+[[case]]
+id = "cubed"
+input = "3 cubed"
+expect = "27"
+
+[[case]]
+id = "times-pi"
+input = "2 times pi"
+expect = "6.283185307"
+
+[[case]]
+id = "sqrt-words"
+input = "square root of 16"
+expect = "4"
+
+[[case]]
+id = "cbrt-words"
+input = "cube root of 27"
+expect = "3"
+
+[[case]]
+id = "gcd"
+input = "gcd(12, 18)"
+expect = "6"
+shared = true
+
+[[case]]
+id = "lcm"
+input = "lcm(4, 6)"
+expect = "12"
+shared = true
+
+[[case]]
+id = "prime"
+input = "prime(7)"
+expect = "7 is prime"
+expect_fr = "7 est premier"
+
+[[case]]
+id = "not-prime"
+input = "21 prime"
+expect = "21 is not prime (3 × 7)"
+expect_fr = "21 n'est pas premier (3 × 7)"
+
+[[case]]
+id = "factorial"
+input = "factorial(5)"
+expect = "120"
+
+[[case]]
+id = "round"
+input = "round(2.5)"
+expect = "3"
+shared = true
+
+[[case]]
+id = "sine"
+input = "sin(30)"
+expect = "0.5"
+shared = true
+
+[[case]]
+id = "km-miles"
+input = "5 km to miles"
+expect = "3.106855961 miles"
+
+[[case]]
+id = "km-miles-2"
+input = "5 km as miles"
+expect = "3.106855961 miles"
+
+[[case]]
+id = "km-miles-in"
+input = "5 km in miles"
+expect = "3.106855961 miles"
+twin = false
+
+[[case]]
+id = "km-meters"
+input = "1 kilometer to meters"
+expect = "1000 meters"
+expect_fr = "1000 mètres"
+
+[[case]]
+id = "meters-feet"
+input = "5 meters to feet"
+expect = "16.40419948 feet"
+expect_fr = "16,40419948 pieds"
+
+[[case]]
+id = "inches-cm"
+input = "12 in to cm"
+expect = "30.48 cm"
+
+[[case]]
+id = "feet-inches"
+input = "5 ft 11 in to cm"
+expect = "180.34 cm"
+
+[[case]]
+id = "light-year"
+input = "1 light year to km"
+expect = "9460730472580.8 km"
+
+[[case]]
+id = "pounds-kg"
+input = "3 lb to kg"
+expect = "1.36077711 kg"
+
+[[case]]
+id = "kg-pounds"
+input = "1 kg to pounds"
+expect = "2.204622622 pounds"
+expect_fr = "2,204622622 livres"
+
+[[case]]
+id = "tonnes"
+input = "2 tons to kg"
+expect = "2000 kg"
+
+[[case]]
+id = "cups"
+input = "2 cups to ml"
+expect = "473.176473 ml"
+
+[[case]]
+id = "tablespoon"
+input = "1 tbsp to ml"
+expect = "14.78676478125 ml"
+
+[[case]]
+id = "liters-gallons"
+input = "3 liters to gallons"
+expect = "0.7925161571 gallons"
+
+[[case]]
+id = "celsius-fahrenheit"
+input = "30 degrees celsius to fahrenheit"
+expect = "86 °F"
+
+[[case]]
+id = "degrees-radians"
+input = "45 degrees to radians"
+expect = "0.7853981634 radians"
+
+[[case]]
+id = "knots"
+input = "1 knot to km/h"
+expect = "1.852 km/h"
+
+[[case]]
+id = "energy"
+input = "10 kW times 3h"
+expect = "30 kWh"
+
+[[case]]
+id = "speed"
+input = "100 km divided by 1.5 h"
+expect = "66.66666667 km/h"
+
+[[case]]
+id = "days-hours"
+input = "4 days to hours"
+expect = "96 hours"
+expect_fr = "96 heures"
+
+[[case]]
+id = "days-short"
+input = "4d to h"
+expect = "96 h"
+
+[[case]]
+id = "weeks-days"
+input = "2 weeks to days"
+expect = "14 days"
+expect_fr = "14 jours"
+
+[[case]]
+id = "weeks-short"
+input = "2 wk to d"
+expect = "14 days"
+expect_fr = "14 jours"
+
+[[case]]
+id = "years-months"
+input = "3 years to months"
+expect = "36 months"
+expect_fr = "36 mois"
+
+[[case]]
+id = "year-days"
+input = "1 yr to days"
+expect = "365.242198781 days"
+expect_fr = "365,242198781 jours"
+
+[[case]]
+id = "an-hour"
+input = "an hour to minutes"
+expect = "60 minutes"
+
+[[case]]
+id = "hours-plus-minutes"
+input = "2 hours plus 30 minutes to minutes"
+expect = "150 minutes"
+
+[[case]]
+id = "decimal-hours"
+input = "1.5 hours to minutes"
+expect = "90 minutes"
+
+[[case]]
+id = "seconds-minutes"
+input = "90 seconds to minutes"
+expect = "1.5 minutes"
+expect_fr = "1,5 minute"
+
+[[case]]
+id = "gib-mb"
+input = "1 GiB to MB"
+expect = "1073.741824 MB"
+expect_fr = "1073,741824 Mo"
+
+[[case]]
+id = "gb-gib"
+input = "500 GB to GiB"
+expect = "465.6612873 GiB"
+expect_fr = "465,6612873 Gio"
+
+[[case]]
+id = "tb-tib"
+input = "1 TB to TiB"
+expect = "0.9094947018 TiB"
+expect_fr = "0,9094947018 Tio"
+
+[[case]]
+id = "mb-mib"
+input = "1 MB to MiB"
+expect = "0.95367431640625 MiB"
+expect_fr = "0,95367431640625 Mio"
+
+[[case]]
+id = "kb-bytes"
+input = "1 kB to bytes"
+expect = "1000 bytes"
+expect_fr = "1000 octets"
+
+[[case]]
+id = "byte-bits"
+input = "1 byte to bits"
+expect = "8 bits"
+
+[[case]]
+id = "bitrate"
+input = "100 Mbit/s to MB/s"
+expect = "12.5 MB/s"
+expect_fr = "12,5 Mo/s"
+
+[[case]]
+id = "hex"
+input = "255 to hexadecimal"
+expect = "0xff"
+expect_fr = "0xff"
+
+[[case]]
+id = "binary"
+input = "0xff to binary"
+expect = "0b11111111"
+expect_fr = "0b11111111"
+
+[[case]]
+id = "quantity-alone"
+input = "3 years"
+expect = "3 years"
+expect_fr = "3 ans"
+
+# ---------------------------------------------------------------- milestone 5: dates, times, transfers
+# The tests run on Thursday, November 26, 2026, 14:12, in Paris.
+
+[[case]]
+id = "now-plus"
+input = "now + 3h"
+expect = "November 26, 2026, 17:12 (Thursday)"
+expect_fr = "26 novembre 2026 à 17h12 (jeudi)"
+
+[[case]]
+id = "relative-in"
+input = "in 90 min"
+expect = "November 26, 2026, 15:42 (Thursday)"
+expect_fr = "26 novembre 2026 à 15h42 (jeudi)"
+
+[[case]]
+id = "ago"
+input = "2h ago"
+expect = "November 26, 2026, 12:12 (Thursday)"
+expect_fr = "26 novembre 2026 à 12h12 (jeudi)"
+
+[[case]]
+id = "date-plus-days"
+input = "2026-11-26 + 45 days"
+expect = "January 10, 2027 (Sunday)"
+expect_fr = "10 janvier 2027 (dimanche)"
+
+[[case]]
+id = "days-until"
+input = "days until December 25"
+expect = "29 days"
+expect_fr = "29 jours"
+
+[[case]]
+id = "days-until-numeric"
+input = "days until Dec 25"
+expect = "29 days"
+expect_fr = "29 jours"
+
+[[case]]
+id = "weeks-since"
+input = "weeks since January 1"
+expect = "47 weeks"
+expect_fr = "47 semaines"
+
+[[case]]
+id = "what-day"
+input = "what day July 14 1789"
+expect = "Tuesday, July 14, 1789"
+expect_fr = "mardi 14 juillet 1789"
+
+[[case]]
+id = "tomorrow-week"
+input = "tomorrow + 1 week"
+expect = "December 4, 2026 (Friday)"
+expect_fr = "4 décembre 2026 (vendredi)"
+
+[[case]]
+id = "date-minus-today"
+input = "January 1st 2027 - today"
+expect = "36 days"
+expect_fr = "36 jours"
+
+[[case]]
+id = "time-in"
+input = "time in Tokyo"
+expect = "22:12 (Thursday, November 26)"
+expect_fr = "22h12 (jeudi 26 novembre)"
+
+[[case]]
+id = "zone-conversion"
+input = "15:00 Tokyo to Paris"
+expect = "7:00"
+expect_fr = "7h"
+
+[[case]]
+id = "now-unix"
+input = "now to unix"
+expect = "1795698720"
+
+[[case]]
+id = "transfer"
+input = "4 GB at 100 Mbit/s"
+expect = "5m 20s"
+expect_fr = "5 min 20 s"
+
+[[case]]
+id = "transfer-2"
+input = "1.5 TB at 250 MB/s"
+expect = "1h 40m"
+expect_fr = "1h40"
+
+[[case]]
+id = "currency"
+input = "100 € to $"
+rates = true
+expect = "110 USD"
+variants = ["ECB rates of 2026-11-26"]
+
+[[case]]
+id = "currency-codes"
+input = "50 usd to eur"
+rates = true
+expect = "45.45454545 EUR"
+
+[[case]]
+id = "currency-words"
+input = "20 pounds sterling to swiss francs"
+rates = true
+expect = "22.35294118 CHF"

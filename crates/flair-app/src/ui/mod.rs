@@ -73,6 +73,8 @@ pub struct Flair {
 
     input: String,
     results: Vec<ResultItem>,
+    /// Last calculation shown and its input, kept greyed while typing on.
+    last_calc: Option<(String, ResultItem)>,
     selected: usize,
     hovered: Option<usize>,
     ctrl_held: bool,
@@ -208,6 +210,7 @@ impl Flair {
             icon_handles: view::IconHandles::default(),
             input: String::new(),
             results: Vec::new(),
+            last_calc: None,
             selected: 0,
             hovered: None,
             ctrl_held: false,
@@ -314,6 +317,7 @@ impl Flair {
                     return Task::none(); // obsolete answer
                 }
                 self.results = results;
+                self.keep_last_calc();
                 // Monochrome icons: no handle, the generic tinted icon is drawn.
                 if self.config.theme.icons == flair_core::settings::config::IconStyle::Color {
                     self.icon_handles.update(&self.results);
@@ -532,7 +536,7 @@ impl Flair {
             self.opacity = config.theme.opacity as f32;
         }
         if let Some(sources) = &self.sources {
-            sources.reload(&self.i18n);
+            sources.reload(&config, &self.i18n);
             self.provider = sources.providers(&self.i18n, &config);
         }
         self.notices = notices_for(&self.i18n, &loaded.issues);
@@ -597,8 +601,10 @@ impl Flair {
             self.dev.shot_pending = self.dev.screenshot.is_some();
             return Task::batch([self.resize(), self.scroll_to(0.0)]);
         }
-        if query.is_empty() {
+        // `=` alone shows the calculation history; otherwise nothing to search.
+        if query.is_empty() && query.filter != Some(ProviderKind::Calculator) {
             self.results.clear();
+            self.last_calc = None;
             self.selected = 0;
             return self.resize();
         }
@@ -720,12 +726,26 @@ impl Flair {
         let action = match which {
             Which::Primary => item.primary_action(),
             Which::Secondary => item.secondary_action().or(item.primary_action()),
-            Which::Raw => item.primary_action(),
+            // `Alt+Enter`: the raw value (calculator: third action).
+            Which::Raw => item.actions.get(2).or(item.primary_action()),
         };
         let Some(action) = action.cloned() else {
             return Task::none();
         };
         tracing::info!(id = %item.id, ?action, "activate");
+        // Copied calculations go to the history (`=` alone lists them).
+        if item.provider == ProviderKind::Calculator
+            && matches!(action, Action::CopyToClipboard { .. })
+            && let Some(sources) = &self.sources
+        {
+            let typed = Query::parse(&self.input).text;
+            let input = if typed.is_empty() {
+                item.subtitle.clone().unwrap_or_default()
+            } else {
+                typed
+            };
+            sources.record_calculation(&input);
+        }
         if matches!(
             action,
             Action::Launch { .. } | Action::LaunchAsAdmin { .. } | Action::Open { .. }
@@ -768,6 +788,29 @@ impl Flair {
         }
     }
 
+    /// While a calculation is being typed (`5h36 + 6`), an input that does
+    /// not compute yet keeps the last valid result, greyed.
+    fn keep_last_calc(&mut self) {
+        let text = Query::parse(&self.input).text;
+        let main = flair_providers::calc::MAIN_ID;
+        if let Some(item) = self.results.iter().find(|r| r.id == main) {
+            self.last_calc = Some((text, item.clone()));
+            return;
+        }
+        let continues = self.last_calc.as_ref().is_some_and(|(previous, _)| {
+            text.starts_with(previous.as_str()) && text.len() > previous.len()
+        });
+        if continues && flair_providers::calc::looks_like_calculation(&text) {
+            if let Some((_, item)) = &self.last_calc {
+                let mut stale = item.clone();
+                stale.id = flair_providers::calc::STALE_ID.into();
+                self.results.insert(0, stale);
+            }
+        } else {
+            self.last_calc = None;
+        }
+    }
+
     /// Hides the window. Flair keeps running in the background.
     fn hide(&mut self) -> Task<Message> {
         if !self.visible {
@@ -789,6 +832,7 @@ impl Flair {
         if !self.config.keep_last_query {
             self.input.clear();
             self.results.clear();
+            self.last_calc = None;
         }
         // Development screenshots: one capture, then quit.
         if self.dev.screenshot.is_some() {
@@ -1072,6 +1116,24 @@ mod tests {
 
     fn named(app: &mut Flair, named: Named, code: Code) {
         press(app, Key::Named(named), code, Modifiers::empty());
+    }
+
+    #[test]
+    fn last_calculation_stays_greyed_while_typing() {
+        let mut app = app();
+        type_text(&mut app, "15% de 240");
+        assert_eq!(app.results[0].id, flair_providers::calc::MAIN_ID);
+        // Not a calculation yet: the last result stays, greyed.
+        type_text(&mut app, "15% de 240 +");
+        assert_eq!(app.results[0].id, flair_providers::calc::STALE_ID);
+        assert_eq!(app.results[0].title, "36");
+        // Another input: gone.
+        type_text(&mut app, "firefox");
+        assert!(
+            app.results
+                .iter()
+                .all(|r| r.id != flair_providers::calc::STALE_ID)
+        );
     }
 
     #[test]
