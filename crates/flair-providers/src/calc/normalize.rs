@@ -25,7 +25,8 @@ const FEND_FUNCTIONS: &[&str] = &[
 ];
 
 /// Functions computed by Flair itself (see `eval`).
-pub const FLAIR_FUNCTIONS: &[&str] = &["gcd", "lcm", "ncr", "npr", "factorial", "isprime"];
+pub const FLAIR_FUNCTIONS: &[&str] =
+    &["gcd", "lcm", "ncr", "npr", "factorial", "isprime", "bitnot"];
 
 const TRIG: &[&str] = &["sin", "cos", "tan"];
 const INVERSE_TRIG: &[&str] = &["asin", "acos", "atan"];
@@ -62,6 +63,9 @@ pub struct Vocabulary {
     blocked_exact: HashSet<String>,
     /// Unit name → (singular, plural) in the interface language.
     display: HashMap<String, (String, String)>,
+    /// Month (1-12) and weekday (1-7) names in the interface language.
+    months: HashMap<u8, String>,
+    weekdays: HashMap<u8, String>,
 }
 
 fn form_tokens(form: &str) -> Vec<String> {
@@ -131,12 +135,35 @@ impl Vocabulary {
                     && !names.contains_key(unit)
                 {
                     let singular = word.forms[0].clone();
+                    // The second form is the plural when it extends the
+                    // first (`jour`, `jours`), not an abbreviation.
                     let plural = word
                         .forms
                         .get(1)
+                        .filter(|p| p.starts_with(singular.as_str()))
                         .cloned()
                         .unwrap_or_else(|| singular.clone());
                     names.insert(unit.to_owned(), (singular, plural));
+                }
+            }
+        }
+        let mut months = HashMap::new();
+        let mut weekdays = HashMap::new();
+        for lexicon in display {
+            for word in &lexicon.words {
+                let first = || word.forms[0].clone();
+                if let Some(m) = word
+                    .sense
+                    .strip_prefix("month:")
+                    .and_then(|m| m.parse().ok())
+                {
+                    months.entry(m).or_insert_with(first);
+                } else if let Some(d) = word
+                    .sense
+                    .strip_prefix("weekday:")
+                    .and_then(|d| d.parse().ok())
+                {
+                    weekdays.entry(d).or_insert_with(first);
                 }
             }
         }
@@ -145,7 +172,33 @@ impl Vocabulary {
             blocked,
             blocked_exact,
             display: names,
+            months,
+            weekdays,
         }
+    }
+
+    /// Month names (January first), in the interface language.
+    pub fn month_names(&self) -> Vec<String> {
+        (1..=12)
+            .map(|m| {
+                self.months
+                    .get(&m)
+                    .cloned()
+                    .unwrap_or_else(|| m.to_string())
+            })
+            .collect()
+    }
+
+    /// Weekday names (Monday first), in the interface language.
+    pub fn weekday_names(&self) -> Vec<String> {
+        (1..=7)
+            .map(|d| {
+                self.weekdays
+                    .get(&d)
+                    .cloned()
+                    .unwrap_or_else(|| d.to_string())
+            })
+            .collect()
     }
 
     fn is_blocked(&self, word: &str) -> bool {
@@ -401,7 +454,11 @@ pub fn segments(
             };
             // A word fend knows as a unit stays possible as typed, after the
             // lexicon senses (`J` is a joule, not the `j` of `jours`).
+            let only_units = candidates
+                .iter()
+                .all(|c| matches!(&c.sense, Sense::Lexicon(s) if s.starts_with("unit:")));
             if !candidates.is_empty()
+                && only_units
                 && matches!(kind, Kind::Word)
                 && !vocabulary.is_blocked(text)
                 && is_unit(text)
@@ -515,7 +572,9 @@ pub struct RenderOptions {
 /// A reading in fend syntax, with what is needed to judge and show it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Rendered {
-    pub fend: String,
+    /// The reading in fend syntax; `None` for dates and times, which only
+    /// the date and time evaluator reads.
+    pub fend: Option<String>,
     /// The reading, written back for "read as: …".
     pub read_as: String,
     /// Not worth a result alone (`42`, `pi`).
@@ -528,10 +587,17 @@ pub struct Rendered {
     pub base_prefix: Option<&'static str>,
     /// Units used, in fend names.
     pub units: Vec<String>,
+    /// The pieces before rewriting, for the date and time evaluator.
+    pub pieces: Vec<Piece>,
+    /// A transfer time (`4 GB at 100 Mbit/s`): the result is a duration.
+    pub transfer: bool,
+    /// Conversion to `h:min` or `h:min:s`: the result is a duration.
+    pub clock_target: bool,
 }
 
+/// One element of a reading, before it is written in fend syntax.
 #[derive(Debug, Clone, PartialEq)]
-enum Piece {
+pub enum Piece {
     Num(String),
     Unit(String),
     Op(String),
@@ -539,11 +605,20 @@ enum Piece {
     Of,
     Percent,
     Func(String),
+    /// A constant or an unknown word (`pi`, `Tokyo`).
     Value(String),
     Open,
     Close,
     Sep,
     Text(String),
+    /// Dates, times and rates (`now`, `ago`, `until`, `rate_at`…).
+    Sense(String),
+    Month(u8),
+    Weekday(u8),
+    /// A time zone named by a lexicon (`Londres` → `Europe/London`).
+    Zone(String),
+    /// `:` (clock times) and `@` (Unix timestamps).
+    Sym(String),
 }
 
 fn decimal_to_binary(unit: &str) -> Option<&'static str> {
@@ -577,6 +652,7 @@ pub fn render(segments: &[Segment], reading: &Reading, options: RenderOptions) -
                 }
                 // `=` at the end (`2+2=`) is harmless.
                 "=" => continue,
+                ":" | "@" => (Piece::Sym(t.clone()), t.clone()),
                 // Anything else (`@`, `$`, `&`…): not supported here.
                 _ => return None,
             },
@@ -611,10 +687,16 @@ pub fn render(segments: &[Segment], reading: &Reading, options: RenderOptions) -
                             Piece::Func(f.to_owned())
                         } else if let Some(c) = s.strip_prefix("const:") {
                             Piece::Value(c.to_owned())
+                        } else if let Some(t) = s.strip_prefix("fend:") {
+                            Piece::Text(t.to_owned())
+                        } else if let Some(m) = s.strip_prefix("month:") {
+                            Piece::Month(m.parse().ok()?)
+                        } else if let Some(d) = s.strip_prefix("weekday:") {
+                            Piece::Weekday(d.parse().ok()?)
+                        } else if let Some(z) = s.strip_prefix("tz:") {
+                            Piece::Zone(z.to_owned())
                         } else {
-                            // Other senses (dates, times, rates) are evaluated
-                            // from milestone 5: no reading yet.
-                            Piece::Text(s.strip_prefix("fend:")?.to_owned())
+                            Piece::Sense(s.to_owned())
                         }
                     }
                 };
@@ -639,7 +721,46 @@ pub fn render(segments: &[Segment], reading: &Reading, options: RenderOptions) -
             _ => None,
         })
         .collect();
-    let pieces = rewrite(pieces, options)?;
+    // `en h:min`, `to h:min:s`: shown as a duration, not converted by fend.
+    let mut clock_target = false;
+    if let Some(k) = pieces.iter().position(|x| *x == Piece::Convert) {
+        let colon = Piece::Sym(":".into());
+        let target = &pieces[k + 1..];
+        let is_h = |p: &Piece| matches!(p, Piece::Unit(u) if HOUR_UNITS.contains(&u.as_str()));
+        let is_min =
+            |p: &Piece| matches!(p, Piece::Unit(u) if u == "min" || u == "m" || u == "minute");
+        let is_s =
+            |p: &Piece| matches!(p, Piece::Unit(u) if u == "s" || u == "second" || u == "sec");
+        let hm = target.len() == 3 && is_h(&target[0]) && target[1] == colon && is_min(&target[2]);
+        let hms = target.len() == 5
+            && is_h(&target[0])
+            && target[1] == colon
+            && is_min(&target[2])
+            && target[3] == colon
+            && is_s(&target[4]);
+        if hm || hms {
+            pieces.truncate(k);
+            clock_target = true;
+        }
+    }
+    let raw_pieces = pieces.clone();
+    let transfer = pieces.contains(&Piece::Sense("rate_at".into()));
+    let Some(pieces) = rewrite(pieces.clone(), options) else {
+        // Not for fend (dates, times…): the date and time evaluator may still
+        // read the pieces.
+        return Some(Rendered {
+            fend: None,
+            read_as: read_as.join(" "),
+            trivial: false,
+            converts: pieces.contains(&Piece::Convert),
+            fractions: 0,
+            base_prefix: None,
+            units,
+            pieces: raw_pieces,
+            transfer,
+            clock_target,
+        });
+    };
     let converts = pieces.contains(&Piece::Convert);
     let operations = pieces.iter().any(|p| {
         matches!(
@@ -678,18 +799,81 @@ pub fn render(segments: &[Segment], reading: &Reading, options: RenderOptions) -
         _ => None,
     };
     Some(Rendered {
-        fend: to_text(&pieces),
+        fend: Some(to_text(&pieces)),
         read_as: read_as.join(" "),
         trivial,
         converts,
         fractions,
         base_prefix,
         units,
+        pieces: raw_pieces,
+        transfer,
+        clock_target,
     })
 }
 
+const HOUR_UNITS: &[&str] = &["h", "hour", "hours", "hr"];
+/// Currencies written before their amount (`$100`, `€20`).
+const CURRENCY_SYMBOLS: &[&str] = &["USD", "EUR", "GBP", "JPY"];
+/// Marks the `+` joining the parts of a compound quantity.
+const JOIN: &str = "+join";
+
 /// Structural rewrites on the pieces (see each step).
 fn rewrite(mut p: Vec<Piece>, options: RenderOptions) -> Option<Vec<Piece>> {
+    // Transfer time: `4 GB at 100 Mbit/s` → `(4 GB) / (100 Mbit/s) to s`.
+    if let Some(k) = p.iter().position(|x| *x == Piece::Sense("rate_at".into())) {
+        let mut out = vec![Piece::Open];
+        out.extend(p[..k].iter().cloned());
+        out.extend([Piece::Close, Piece::Op("/".into()), Piece::Open]);
+        out.extend(p[k + 1..].iter().cloned());
+        out.extend([Piece::Close, Piece::Convert, Piece::Unit("s".into())]);
+        p = out;
+    }
+
+    // Clock notation: `2:45:10` → `2 h 45 min 10 s` (summed below).
+    let colon = Piece::Sym(":".into());
+    let mut i = 0;
+    while i + 2 < p.len() {
+        if matches!(p[i], Piece::Num(_)) && p[i + 1] == colon && matches!(p[i + 2], Piece::Num(_)) {
+            let seconds =
+                p.get(i + 3) == Some(&colon) && matches!(p.get(i + 4), Some(Piece::Num(_)));
+            let mut replacement = vec![
+                p[i].clone(),
+                Piece::Unit("h".into()),
+                p[i + 2].clone(),
+                Piece::Unit("min".into()),
+            ];
+            let end = if seconds {
+                replacement.extend([p[i + 4].clone(), Piece::Unit("s".into())]);
+                i + 5
+            } else {
+                i + 3
+            };
+            p.splice(i..end, replacement);
+        }
+        i += 1;
+    }
+
+    // Compact hours: `5h36` → `5 h 36 min`.
+    let mut i = 0;
+    while i + 1 < p.len() {
+        let hours = matches!(&p[i], Piece::Unit(u) if HOUR_UNITS.contains(&u.as_str()));
+        let then_number = matches!(p.get(i + 1), Some(Piece::Num(_)));
+        let alone = !matches!(p.get(i + 2), Some(Piece::Unit(_) | Piece::Num(_)));
+        if hours && then_number && alone && i > 0 && matches!(p[i - 1], Piece::Num(_)) {
+            p.insert(i + 2, Piece::Unit("min".into()));
+        }
+        i += 1;
+    }
+    if p.iter().any(|x| {
+        matches!(
+            x,
+            Piece::Sense(_) | Piece::Month(_) | Piece::Weekday(_) | Piece::Zone(_) | Piece::Sym(_)
+        )
+    }) {
+        // Dates and times: only the date and time evaluator can read them.
+        return None;
+    }
     // Two numbers side by side are not a calculation (`15 00`).
     if p.windows(2)
         .any(|w| matches!(w, [Piece::Num(_), Piece::Num(_)]))
@@ -706,13 +890,41 @@ fn rewrite(mut p: Vec<Piece>, options: RenderOptions) -> Option<Vec<Piece>> {
             let feet = matches!(&p[i], Piece::Unit(u) if u == "foot" || u == "ft" || u == "feet");
             let ends = matches!(p.get(i + 2), None | Some(Piece::Convert));
             if next_is_unit || (feet && ends) {
-                p.insert(i + 1, Piece::Op("+".into()));
+                p.insert(i + 1, Piece::Op(JOIN.into()));
                 if !next_is_unit {
                     p.insert(i + 3, Piece::Unit("inch".into()));
                 }
             }
         }
         i += 1;
+    }
+    // A compound quantity is one value: `1h45 * 3` = `(1 h + 45 min) * 3`.
+    let mut i = 0;
+    while i < p.len() {
+        if p[i] == Piece::Op(JOIN.into()) {
+            let mut start = i;
+            while start > 0 && matches!(p[start - 1], Piece::Unit(_)) {
+                start -= 1;
+            }
+            start = start.saturating_sub(1);
+            let mut end = i;
+            while end < p.len()
+                && (matches!(p[end], Piece::Unit(_) | Piece::Num(_))
+                    || p[end] == Piece::Op(JOIN.into()))
+            {
+                end += 1;
+            }
+            for x in &mut p[start..end] {
+                if *x == Piece::Op(JOIN.into()) {
+                    *x = Piece::Op("+".into());
+                }
+            }
+            p.insert(end, Piece::Close);
+            p.insert(start, Piece::Open);
+            i = end + 2;
+        } else {
+            i += 1;
+        }
     }
 
     // Percentages added or removed: `240 + 15%` → `(240) * (1 + 15/100)`.
@@ -755,6 +967,16 @@ fn rewrite(mut p: Vec<Piece>, options: RenderOptions) -> Option<Vec<Piece>> {
         i += 1;
     }
 
+    // `~5`, `not 5`: Flair's bitwise not needs parentheses.
+    let mut i = 0;
+    while i + 1 < p.len() {
+        if matches!(&p[i], Piece::Func(f) if f == "bitnot") && matches!(p[i + 1], Piece::Num(_)) {
+            p.insert(i + 1, Piece::Open);
+            p.insert(i + 3, Piece::Close);
+        }
+        i += 1;
+    }
+
     // `5 nCr 2`: infix form of fend (the call form `ncr(5, 2)` is Flair's).
     for i in 0..p.len() {
         if let Piece::Func(f) = &p[i]
@@ -767,6 +989,18 @@ fn rewrite(mut p: Vec<Piece>, options: RenderOptions) -> Option<Vec<Piece>> {
                 "nPr".into()
             });
         }
+    }
+
+    // `$100`: the currency comes after the number for fend.
+    let mut i = 0;
+    while i + 1 < p.len() {
+        if matches!(&p[i], Piece::Unit(u) if CURRENCY_SYMBOLS.contains(&u.as_str()))
+            && matches!(p[i + 1], Piece::Num(_))
+        {
+            p.swap(i, i + 1);
+            i += 1;
+        }
+        i += 1;
     }
 
     // Quantities are grouped, so `100 km / 1.5 h` divides by 1.5 hours.
@@ -876,6 +1110,11 @@ fn to_text(pieces: &[Piece]) -> String {
             Piece::Close => (")", true),
             Piece::Sep => (",", true),
             Piece::Text(t) => (t.as_str(), t.starts_with('^')),
+            Piece::Sense(_)
+            | Piece::Month(_)
+            | Piece::Weekday(_)
+            | Piece::Zone(_)
+            | Piece::Sym(_) => ("?", false),
         };
         if !out.is_empty() && !glue && !out.ends_with('(') {
             out.push(' ');
@@ -947,8 +1186,10 @@ mod tests {
             .iter()
             .filter_map(|r| render(&segs, r, OPTIONS))
         {
-            if !out.contains(&r.fend) {
-                out.push(r.fend);
+            if let Some(f) = r.fend
+                && !out.contains(&f)
+            {
+                out.push(f);
             }
         }
         out
@@ -992,8 +1233,8 @@ mod tests {
     #[test]
     fn m_is_meter_then_minute() {
         assert_eq!(all("5m", &["fr", "en"]), ["(5 m)", "(5 min)"]);
-        assert_eq!(best("1h30m"), "(1 h) + (30 min)");
-        assert_eq!(best("5m30s"), "(5 min) + (30 s)");
+        assert_eq!(best("1h30m"), "((1 h) + (30 min))");
+        assert_eq!(best("5m30s"), "((5 min) + (30 s))");
     }
 
     #[test]
@@ -1028,8 +1269,8 @@ mod tests {
         assert_eq!(best("sin(30°)"), "sin((30 °))");
         assert_eq!(best("sin 30"), "sin((30) °)");
         assert_eq!(best("asin(0.5)"), "asin(0.5) to °");
-        assert_eq!(best("5 ft 11 in to cm"), "(5 ft) + (11 inch) to cm");
-        assert_eq!(best("5 pieds 11 en cm"), "(5 foot) + (11 inch) to cm");
+        assert_eq!(best("5 ft 11 in to cm"), "((5 ft) + (11 inch)) to cm");
+        assert_eq!(best("5 pieds 11 en cm"), "((5 foot) + (11 inch)) to cm");
         assert_eq!(best("pgcd(12; 18)"), "gcd(12, 18)");
         assert_eq!(best("7 est premier"), "isprime(7)");
         assert_eq!(best("5!"), "5!");
@@ -1041,7 +1282,9 @@ mod tests {
         let check = |input: &str| {
             let tokens = tokenize(input, DecimalMode::Dot);
             let segs = segments(&tokens, &vocabulary(&["fr", "en"]), &fake_unit);
-            render(&segs, &readings(&segs)[0], OPTIONS).map(|r| r.trivial)
+            render(&segs, &readings(&segs)[0], OPTIONS)
+                .filter(|r| r.fend.is_some())
+                .map(|r| r.trivial)
         };
         assert_eq!(check("42"), Some(true));
         assert_eq!(check("pi"), Some(true));

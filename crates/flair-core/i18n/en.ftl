@@ -177,3 +177,7 @@ calc-read-as = read as: { $reading }
 calc-too-big = Too big to compute
 calc-prime = { $n } is prime
 calc-not-prime = { $n } is not prime
+calc-next-day = next day
+calc-previous-day = previous day
+calc-local-time = local time
+calc-rates-date = ECB rates of { $date }

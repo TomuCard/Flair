@@ -77,7 +77,8 @@ pub fn row_height(item: &ResultItem) -> f32 {
 
 /// The main calculator result (shown larger, with the expression under it).
 fn is_main_calc(item: &ResultItem) -> bool {
-    item.provider == ProviderKind::Calculator && item.id == flair_providers::calc::MAIN_ID
+    item.provider == ProviderKind::Calculator
+        && (item.id == flair_providers::calc::MAIN_ID || item.id == flair_providers::calc::STALE_ID)
 }
 
 impl Flair {
@@ -250,10 +251,16 @@ fn title(item: &ResultItem, p: Palette) -> Element<'_, Message> {
         } else {
             design::TITLE_SIZE
         };
+        // The last valid result, kept while the input is being typed: greyed.
+        let color = if item.id == flair_providers::calc::STALE_ID {
+            p.text_secondary
+        } else {
+            p.text
+        };
         return text(&item.title)
             .font(MONO)
             .size(size)
-            .color(p.text)
+            .color(color)
             .wrapping(Wrapping::None)
             .into();
     }

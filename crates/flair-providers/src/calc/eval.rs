@@ -6,6 +6,23 @@ use std::time::{Duration, Instant};
 /// Results longer than this (in chars) are "too big to compute".
 const MAX_RESULT_CHARS: usize = 20_000;
 
+/// What an evaluation may use: a deadline, and exchange rates when currency
+/// conversions are enabled.
+#[derive(Clone)]
+pub struct Env {
+    pub deadline: Deadline,
+    pub rates: Option<super::currency::SharedRates>,
+}
+
+impl Env {
+    pub fn new(deadline: Deadline) -> Self {
+        Self {
+            deadline,
+            rates: None,
+        }
+    }
+}
+
 /// Stops fend when the time is up.
 #[derive(Debug, Clone, Copy)]
 pub struct Deadline(Instant);
@@ -47,12 +64,16 @@ pub enum EvalError {
 }
 
 /// Evaluates with fend only.
-pub fn fend(expr: &str, deadline: Deadline) -> Result<(String, bool), EvalError> {
+pub fn fend(expr: &str, env: &Env) -> Result<(String, bool), EvalError> {
+    let deadline = env.deadline;
     if deadline.passed() {
         return Err(EvalError::TooBig);
     }
     let mut context = fend_core::Context::new();
     context.disable_rng();
+    if let Some(rates) = &env.rates {
+        context.set_exchange_rate_handler_v2(super::currency::Handler(rates.clone()));
+    }
     let result =
         fend_core::evaluate_with_interrupt(expr, &mut context, &deadline).map_err(|e| {
             if e == "interrupted" || deadline.passed() {
@@ -79,7 +100,7 @@ pub fn fend(expr: &str, deadline: Deadline) -> Result<(String, bool), EvalError>
 }
 
 /// Evaluates an expression, Flair's functions included.
-pub fn evaluate(expr: &str, deadline: Deadline) -> Result<Outcome, EvalError> {
+pub fn evaluate(expr: &str, deadline: &Env) -> Result<Outcome, EvalError> {
     if let Some(arg) = call_argument(expr, "isprime") {
         let n = integer(&expand(arg, deadline)?, deadline)?;
         let n = u64::try_from(n).map_err(|_| EvalError::TooBig)?;
@@ -147,7 +168,7 @@ fn arguments(text: &str) -> Vec<&str> {
 }
 
 /// Replaces Flair's functions by their value or by fend syntax.
-fn expand(expr: &str, deadline: Deadline) -> Result<String, EvalError> {
+fn expand(expr: &str, deadline: &Env) -> Result<String, EvalError> {
     let mut out = String::with_capacity(expr.len());
     let mut rest = expr;
     loop {
@@ -168,6 +189,8 @@ fn expand(expr: &str, deadline: Deadline) -> Result<String, EvalError> {
             ("ncr", [n, k]) => format!("(({n}) nCr ({k}))"),
             ("npr", [n, k]) => format!("(({n}) nPr ({k}))"),
             ("factorial", [x]) => format!("(({x})!)"),
+            // Two's complement, like most languages: `~5` = -6.
+            ("bitnot", [x]) => format!("(-({x}) - 1)"),
             ("gcd" | "lcm", [first, others @ ..]) if !others.is_empty() => {
                 let mut acc = integer(first, deadline)?.unsigned_abs();
                 for arg in others {
@@ -207,7 +230,7 @@ fn find_call(text: &str, name: &str) -> Option<usize> {
 }
 
 /// Evaluates to an exact integer.
-fn integer(expr: &str, deadline: Deadline) -> Result<i128, EvalError> {
+fn integer(expr: &str, deadline: &Env) -> Result<i128, EvalError> {
     let (text, approx) = fend(expr, deadline)?;
     if approx {
         return Err(EvalError::Invalid);
@@ -298,7 +321,7 @@ mod tests {
     use super::*;
 
     fn eval(expr: &str) -> Result<Outcome, EvalError> {
-        evaluate(expr, Deadline::after(Duration::from_millis(200)))
+        evaluate(expr, &Env::new(Deadline::after(Duration::from_millis(200))))
     }
 
     fn value(expr: &str) -> String {
@@ -358,11 +381,17 @@ mod tests {
     fn too_big_is_reported() {
         let t = Instant::now();
         assert_eq!(
-            evaluate("10^10^10^10", Deadline::after(Duration::from_millis(50))),
+            evaluate(
+                "10^10^10^10",
+                &Env::new(Deadline::after(Duration::from_millis(50)))
+            ),
             Err(EvalError::TooBig)
         );
         assert_eq!(
-            evaluate("1000000!", Deadline::after(Duration::from_millis(50))),
+            evaluate(
+                "1000000!",
+                &Env::new(Deadline::after(Duration::from_millis(50)))
+            ),
             Err(EvalError::TooBig)
         );
         assert!(t.elapsed() < Duration::from_millis(500));

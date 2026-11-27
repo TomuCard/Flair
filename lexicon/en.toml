@@ -207,3 +207,138 @@ sense = "fend:binary"
 [[word]]
 forms = ["decimal"]
 sense = "fend:decimal"
+
+# ---------------------------------------------------------------- dates and times
+
+[[word]]
+forms = ["now"]
+sense = "now"
+
+[[word]]
+forms = ["today"]
+sense = "today"
+
+[[word]]
+forms = ["tomorrow"]
+sense = "tomorrow"
+
+[[word]]
+forms = ["yesterday"]
+sense = "yesterday"
+
+[[word]]
+forms = ["ago"]
+sense = "ago"
+when = { position = "end", after = "duration" }
+
+[[word]]
+forms = ["until", "till"]
+sense = "until"
+
+[[word]]
+forms = ["since"]
+sense = "since"
+
+[[word]]
+forms = ["what day", "what day is", "what day was", "what day is it on"]
+sense = "what_day"
+
+[[word]]
+forms = ["time in", "what time in", "what time is it in"]
+sense = "time_in"
+
+[[word]]
+forms = ["at"]
+sense = "rate_at"
+when = { between = ["quantity", "quantity"] }
+
+[[word]]
+forms = ["st", "nd", "rd", "th"]
+sense = "ignore"
+when = { after = "number" }
+
+[[word]]
+forms = ["January", "jan"]
+sense = "month:1"
+
+[[word]]
+forms = ["February", "feb"]
+sense = "month:2"
+
+[[word]]
+forms = ["March", "mar"]
+sense = "month:3"
+
+[[word]]
+forms = ["April", "apr"]
+sense = "month:4"
+
+[[word]]
+forms = ["May"]
+sense = "month:5"
+
+[[word]]
+forms = ["June", "jun"]
+sense = "month:6"
+
+[[word]]
+forms = ["July", "jul"]
+sense = "month:7"
+
+[[word]]
+forms = ["August", "aug"]
+sense = "month:8"
+
+[[word]]
+forms = ["September", "sep", "sept"]
+sense = "month:9"
+
+[[word]]
+forms = ["October", "oct"]
+sense = "month:10"
+
+[[word]]
+forms = ["November", "nov"]
+sense = "month:11"
+
+[[word]]
+forms = ["December", "dec"]
+sense = "month:12"
+
+[[word]]
+forms = ["Monday", "mon"]
+sense = "weekday:1"
+
+[[word]]
+forms = ["Tuesday", "tue"]
+sense = "weekday:2"
+
+[[word]]
+forms = ["Wednesday", "wed"]
+sense = "weekday:3"
+
+[[word]]
+forms = ["Thursday", "thu"]
+sense = "weekday:4"
+
+[[word]]
+forms = ["Friday", "fri"]
+sense = "weekday:5"
+
+[[word]]
+forms = ["Saturday"]
+sense = "weekday:6"
+
+[[word]]
+forms = ["Sunday"]
+sense = "weekday:7"
+
+# ---------------------------------------------------------------- currencies
+
+[[word]]
+forms = ["pound sterling", "pounds sterling"]
+sense = "unit:GBP"
+
+[[word]]
+forms = ["swiss franc", "swiss francs"]
+sense = "unit:CHF"

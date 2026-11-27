@@ -340,3 +340,114 @@ id = "quantity-alone"
 input = "3 years"
 expect = "3 years"
 expect_fr = "3 ans"
+
+# ---------------------------------------------------------------- milestone 5: dates, times, transfers
+# The tests run on Thursday, November 26, 2026, 14:12, in Paris.
+
+[[case]]
+id = "now-plus"
+input = "now + 3h"
+expect = "November 26, 2026, 17:12 (Thursday)"
+expect_fr = "26 novembre 2026 à 17h12 (jeudi)"
+
+[[case]]
+id = "relative-in"
+input = "in 90 min"
+expect = "November 26, 2026, 15:42 (Thursday)"
+expect_fr = "26 novembre 2026 à 15h42 (jeudi)"
+
+[[case]]
+id = "ago"
+input = "2h ago"
+expect = "November 26, 2026, 12:12 (Thursday)"
+expect_fr = "26 novembre 2026 à 12h12 (jeudi)"
+
+[[case]]
+id = "date-plus-days"
+input = "2026-11-26 + 45 days"
+expect = "January 10, 2027 (Sunday)"
+expect_fr = "10 janvier 2027 (dimanche)"
+
+[[case]]
+id = "days-until"
+input = "days until December 25"
+expect = "29 days"
+expect_fr = "29 jours"
+
+[[case]]
+id = "days-until-numeric"
+input = "days until Dec 25"
+expect = "29 days"
+expect_fr = "29 jours"
+
+[[case]]
+id = "weeks-since"
+input = "weeks since January 1"
+expect = "47 weeks"
+expect_fr = "47 semaines"
+
+[[case]]
+id = "what-day"
+input = "what day July 14 1789"
+expect = "Tuesday, July 14, 1789"
+expect_fr = "mardi 14 juillet 1789"
+
+[[case]]
+id = "tomorrow-week"
+input = "tomorrow + 1 week"
+expect = "December 4, 2026 (Friday)"
+expect_fr = "4 décembre 2026 (vendredi)"
+
+[[case]]
+id = "date-minus-today"
+input = "January 1st 2027 - today"
+expect = "36 days"
+expect_fr = "36 jours"
+
+[[case]]
+id = "time-in"
+input = "time in Tokyo"
+expect = "22:12 (Thursday, November 26)"
+expect_fr = "22h12 (jeudi 26 novembre)"
+
+[[case]]
+id = "zone-conversion"
+input = "15:00 Tokyo to Paris"
+expect = "7:00"
+expect_fr = "7h"
+
+[[case]]
+id = "now-unix"
+input = "now to unix"
+expect = "1795698720"
+
+[[case]]
+id = "transfer"
+input = "4 GB at 100 Mbit/s"
+expect = "5m 20s"
+expect_fr = "5 min 20 s"
+
+[[case]]
+id = "transfer-2"
+input = "1.5 TB at 250 MB/s"
+expect = "1h 40m"
+expect_fr = "1h40"
+
+[[case]]
+id = "currency"
+input = "100 € to $"
+rates = true
+expect = "110 USD"
+variants = ["ECB rates of 2026-11-26"]
+
+[[case]]
+id = "currency-codes"
+input = "50 usd to eur"
+rates = true
+expect = "45.45454545 EUR"
+
+[[case]]
+id = "currency-words"
+input = "20 pounds sterling to swiss francs"
+rates = true
+expect = "22.35294118 CHF"

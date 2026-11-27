@@ -330,3 +330,122 @@ id = "quantity-alone"
 input = "3 ans"
 expect = "3 years"
 expect_fr = "3 ans"
+
+# ---------------------------------------------------------------- jalon 5 : dates, heures, transferts
+# Les tests tournent le jeudi 26 novembre 2026 à 14h12, à Paris.
+
+[[case]]
+id = "now-plus"
+input = "maintenant + 3h"
+expect = "November 26, 2026, 17:12 (Thursday)"
+expect_fr = "26 novembre 2026 à 17h12 (jeudi)"
+
+[[case]]
+id = "relative-in"
+input = "dans 90 min"
+expect = "November 26, 2026, 15:42 (Thursday)"
+expect_fr = "26 novembre 2026 à 15h42 (jeudi)"
+
+[[case]]
+id = "ago"
+input = "il y a 2h"
+expect = "November 26, 2026, 12:12 (Thursday)"
+expect_fr = "26 novembre 2026 à 12h12 (jeudi)"
+
+[[case]]
+id = "date-plus-days"
+input = "26/11/2026 + 45 jours"
+expect = "January 10, 2027 (Sunday)"
+expect_fr = "10 janvier 2027 (dimanche)"
+variants = ["10/01/2027", "2027-01-10"]
+
+[[case]]
+id = "days-until"
+input = "jours jusqu'au 25 décembre"
+expect = "29 days"
+expect_fr = "29 jours"
+
+[[case]]
+id = "days-until-numeric"
+input = "jours jusqu'au 25/12"
+expect = "29 days"
+expect_fr = "29 jours"
+
+[[case]]
+id = "weeks-since"
+input = "semaines depuis le 1er janvier"
+expect = "47 weeks"
+expect_fr = "47 semaines"
+
+[[case]]
+id = "what-day"
+input = "quel jour 14 juillet 1789"
+expect = "Tuesday, July 14, 1789"
+expect_fr = "mardi 14 juillet 1789"
+
+[[case]]
+id = "tomorrow-week"
+input = "demain + 1 semaine"
+expect = "December 4, 2026 (Friday)"
+expect_fr = "4 décembre 2026 (vendredi)"
+
+[[case]]
+id = "date-minus-today"
+input = "1er janvier 2027 - aujourd'hui"
+expect = "36 days"
+expect_fr = "36 jours"
+
+[[case]]
+id = "time-in"
+input = "heure à Tokyo"
+expect = "22:12 (Thursday, November 26)"
+expect_fr = "22h12 (jeudi 26 novembre)"
+
+[[case]]
+id = "zone-conversion"
+input = "15h Tokyo en Paris"
+expect = "7:00"
+expect_fr = "7h"
+
+[[case]]
+id = "now-unix"
+input = "maintenant en unix"
+expect = "1795698720"
+
+[[case]]
+id = "transfer"
+input = "4 Go à 100 Mbit/s"
+expect = "5m 20s"
+expect_fr = "5 min 20 s"
+
+[[case]]
+id = "transfer-2"
+input = "1.5 To à 250 Mo/s"
+expect = "1h 40m"
+expect_fr = "1h40"
+
+[[case]]
+id = "transfer-no-accent"
+input = "4 Go a 100 Mbit/s"
+expect = "5m 20s"
+expect_fr = "5 min 20 s"
+twin = false
+
+[[case]]
+id = "currency"
+input = "100 € en $"
+rates = true
+expect = "110 USD"
+variants = ["ECB rates of 2026-11-26"]
+
+[[case]]
+id = "currency-codes"
+input = "50 usd en eur"
+rates = true
+expect = "45.45454545 EUR"
+
+[[case]]
+id = "currency-words"
+input = "20 livres sterling en francs suisses"
+rates = true
+expect = "22.35294118 CHF"

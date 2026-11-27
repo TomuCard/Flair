@@ -303,6 +303,10 @@ fn unit_text(unit: &str, number: &Decimal, style: Style, vocabulary: &Vocabulary
 }
 
 fn translate_unit(word: &str, plural: bool, vocabulary: &Vocabulary) -> String {
+    // Currency codes stay codes (`USD`, `CHF`).
+    if word.len() == 3 && word.chars().all(|c| c.is_ascii_uppercase()) {
+        return word.to_owned();
+    }
     let singular = match word {
         "feet" => "foot".to_owned(),
         "inches" => "inch".to_owned(),
@@ -313,6 +317,71 @@ fn translate_unit(word: &str, plural: bool, vocabulary: &Vocabulary) -> String {
         .unit_name(word, plural)
         .or_else(|| vocabulary.unit_name(&singular, plural))
         .map_or_else(|| word.to_owned(), str::to_owned)
+}
+
+/// A number with at most `decimals` decimals, trailing zeros removed.
+pub fn decimal(n: f64, decimals: usize, french: bool) -> String {
+    let text = format!("{n:.decimals$}");
+    let text = if text.contains('.') {
+        text.trim_end_matches('0').trim_end_matches('.').to_owned()
+    } else {
+        text
+    };
+    let text = if text == "-0" { "0".to_owned() } else { text };
+    if french { text.replace('.', ",") } else { text }
+}
+
+/// Hours, minutes and seconds of a duration, rounded to the second.
+fn hms(seconds: f64) -> (bool, i64, i64, i64) {
+    #[allow(clippy::cast_possible_truncation)]
+    let total = seconds.abs().round() as i64;
+    (seconds < 0.0, total / 3600, total / 60 % 60, total % 60)
+}
+
+/// `6h41`, `2h46m40s`, `5 min 20 s` / `6h 41m`, `2h 46m 40s`, `5m 20s`.
+pub fn duration(seconds: f64, french: bool) -> String {
+    let (negative, h, m, s) = hms(seconds);
+    let body = match (french, h, m, s) {
+        (true, 0, 0, s) => format!("{s} s"),
+        (true, 0, m, 0) => format!("{m} min"),
+        (true, 0, m, s) => format!("{m} min {s} s"),
+        (true, h, 0, 0) => format!("{h}h"),
+        (true, h, m, 0) => format!("{h}h{m:02}"),
+        (true, h, m, s) => format!("{h}h{m:02}m{s:02}s"),
+        (false, 0, 0, s) => format!("{s}s"),
+        (false, 0, m, 0) => format!("{m}m"),
+        (false, 0, m, s) => format!("{m}m {s}s"),
+        (false, h, 0, 0) => format!("{h}h"),
+        (false, h, m, 0) => format!("{h}h {m}m"),
+        (false, h, m, s) => format!("{h}h {m}m {s}s"),
+    };
+    if negative { format!("-{body}") } else { body }
+}
+
+/// `6:41`, `401 min`, `6.683 h` for a duration.
+pub fn duration_variants(seconds: f64, french: bool) -> Vec<super::Answer> {
+    let (negative, h, m, s) = hms(seconds);
+    let sign = if negative { "-" } else { "" };
+    let clock = if s == 0 {
+        format!("{sign}{h}:{m:02}")
+    } else {
+        format!("{sign}{h}:{m:02}:{s:02}")
+    };
+    let minutes = decimal(seconds / 60.0, 3, french);
+    let hours = decimal(seconds / 3600.0, 3, french);
+    let item = |display: String, raw: String| super::Answer {
+        display,
+        raw,
+        read_as: None,
+    };
+    let mut out = vec![item(clock.clone(), clock)];
+    if seconds.abs() >= 60.0 {
+        out.push(item(format!("{minutes} min"), minutes.replace(',', ".")));
+    }
+    if seconds.abs() >= 3600.0 {
+        out.push(item(format!("{hours} h"), hours.replace(',', ".")));
+    }
+    out
 }
 
 #[cfg(test)]
@@ -383,5 +452,22 @@ mod tests {
             "465.6612873 GiB"
         );
         assert_eq!(show("0b1100", false, EN).display, "0b1100");
+    }
+
+    #[test]
+    fn durations() {
+        assert_eq!(duration(6.0 * 3600.0 + 41.0 * 60.0, true), "6h41");
+        assert_eq!(duration(6.0 * 3600.0 + 41.0 * 60.0, false), "6h 41m");
+        assert_eq!(duration(10_000.0, true), "2h46m40s");
+        assert_eq!(duration(320.0, true), "5 min 20 s");
+        assert_eq!(duration(320.0, false), "5m 20s");
+        assert_eq!(duration(7200.0, true), "2h");
+        assert_eq!(duration(-60.0, false), "-1m");
+        let v: Vec<String> = duration_variants(401.0 * 60.0, false)
+            .into_iter()
+            .map(|a| a.display)
+            .collect();
+        assert_eq!(v, ["6:41", "401 min", "6.683 h"]);
+        assert_eq!(decimal(1.50, 3, true), "1,5");
     }
 }

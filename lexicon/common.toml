@@ -244,3 +244,52 @@ sense = "fend:binary"
 [[word]]
 forms = ["oct"]
 sense = "fend:octal"
+priority = 5
+
+# ---------------------------------------------------------------- bitwise
+
+[[word]]
+forms = ["&", "and"]
+sense = "fend:and"
+
+[[word]]
+forms = ["|", "or"]
+sense = "fend:or"
+
+[[word]]
+forms = ["xor"]
+sense = "fend:xor"
+
+[[word]]
+forms = ["~", "not"]
+sense = "func:bitnot"
+
+# ---------------------------------------------------------------- dates and times
+
+[[word]]
+forms = ["unix", "timestamp", "epoch"]
+sense = "unix"
+when = { after = "sense:convert_to" }
+
+[[word]]
+forms = ["UTC", "GMT"]
+sense = "tz:UTC"
+case_sensitive = true
+
+# ---------------------------------------------------------------- currencies (with `currency = true`)
+
+[[word]]
+forms = ["€"]
+sense = "unit:EUR"
+
+[[word]]
+forms = ["$", "US$"]
+sense = "unit:USD"
+
+[[word]]
+forms = ["£"]
+sense = "unit:GBP"
+
+[[word]]
+forms = ["¥"]
+sense = "unit:JPY"

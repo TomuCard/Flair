@@ -42,11 +42,15 @@ pub const SENSES: &[&str] = &[
     "what_day",
     "rate_at",
     "time_in",
+    "today",
+    "tomorrow",
+    "yesterday",
+    "unix",
 ];
 
 /// Prefixes of parameterized senses (`unit:day`, `op:*`, `func:sqrt`…).
 pub const SENSE_PREFIXES: &[&str] = &[
-    "unit:", "op:", "func:", "const:", "fend:", "month:", "weekday:",
+    "unit:", "op:", "func:", "const:", "fend:", "month:", "weekday:", "tz:",
 ];
 
 /// Date order of a language, for `01/02/2026`.

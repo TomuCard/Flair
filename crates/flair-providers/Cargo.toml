@@ -10,6 +10,8 @@ repository.workspace = true
 flair-core.workspace = true
 flair-platform.workspace = true
 fend-core = "1.5.9"
+jiff = "1.0.3"
+serde_json.workspace = true
 notify = { version = "9.0.0", default-features = false }
 tracing.workspace = true
 

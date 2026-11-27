@@ -70,7 +70,8 @@ impl Provider for Providers {
     }
 
     fn query(&self, q: &Query, cancel: &CancellationToken) -> Vec<ResultItem> {
-        if q.is_empty() {
+        // `=` alone lists the calculation history.
+        if q.is_empty() && q.filter != Some(ProviderKind::Calculator) {
             return Vec::new();
         }
         let mut out: Vec<ResultItem> = Vec::new();

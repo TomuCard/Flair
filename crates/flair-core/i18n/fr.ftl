@@ -177,3 +177,7 @@ calc-read-as = lu comme : { $reading }
 calc-too-big = Trop grand pour être calculé
 calc-prime = { $n } est premier
 calc-not-prime = { $n } n'est pas premier
+calc-next-day = lendemain
+calc-previous-day = veille
+calc-local-time = heure locale
+calc-rates-date = taux BCE du { $date }

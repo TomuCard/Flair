@@ -467,3 +467,158 @@ too_big = true
 [[case]]
 input = "1000000!"
 too_big = true
+
+# ---------------------------------------------------------------- durations and times of day (milestone 5)
+
+[[case]]
+input = "5h36 + 65min"
+expect = "6h 41m"
+expect_fr = "6h41"
+variants = ["6:41", "401 min", "6.683 h"]
+
+[[case]]
+input = "1h45 * 3"
+expect = "5h 15m"
+expect_fr = "5h15"
+
+[[case]]
+input = "3h - 47min"
+expect = "2h 13m"
+expect_fr = "2h13"
+
+[[case]]
+input = "3h45 → min"
+expect = "225 min"
+
+[[case]]
+input = "2.5 h → h:min"
+expect = "2h 30m"
+expect_fr = "2h30"
+
+[[case]]
+input = "10000 s → h:min:s"
+expect = "2h 46m 40s"
+expect_fr = "2h46m40s"
+
+[[case]]
+input = "90 min → h"
+expect = "1.5 h"
+
+[[case]]
+input = "14h30 + 2h45"
+expect = "17h 15m"
+expect_fr = "17h15"
+
+[[case]]
+input = "14:30 + 2:45"
+expect = "17:15"
+expect_fr = "17h15"
+
+[[case]]
+input = "23h + 3h"
+expect = "2:00 (next day)"
+expect_fr = "2h (lendemain)"
+
+[[case]]
+input = "1h - 3h"
+expect = "22:00 (previous day)"
+expect_fr = "22h (veille)"
+
+[[case]]
+input = "18h - 9h15"
+expect = "8h 45m"
+expect_fr = "8h45"
+
+[[case]]
+input = "2:45:10 * 2"
+expect = "5h 30m 20s"
+expect_fr = "5h30m20s"
+
+[[case]]
+input = "1h05m30s → s"
+expect = "3930 s"
+
+# ---------------------------------------------------------------- dates (milestone 5); the tests run on 2026-11-26 14:12, Paris
+
+[[case]]
+input = "2026-11-26 → unix"
+expect = "1795647600"
+
+[[case]]
+input = "@1700000000"
+langs = ["fr"]
+expect = "14/11/2023 22:13:20 UTC"
+expect_fr = "14/11/2023 22:13:20 UTC"
+
+[[case]]
+input = "25/12/2026 - 26/11/2026"
+langs = ["fr"]
+expect = "29 days"
+expect_fr = "29 jours"
+
+[[case]]
+input = "01/02/2026 - 01/01/2026"
+langs = ["fr"]
+date = "dmy"
+expect = "31 days"
+expect_fr = "31 jours"
+
+[[case]]
+input = "01/02/2026 - 01/01/2026"
+langs = ["fr"]
+date = "mdy"
+expect = "1 day"
+expect_fr = "1 jour"
+
+[[case]]
+input = "now + 3 jours"
+langs = ["fr", "en"]
+expect = "November 29, 2026, 14:12 (Sunday)"
+expect_fr = "29 novembre 2026 à 14h12 (dimanche)"
+
+[[case]]
+input = "maintenant + 2 days"
+langs = ["fr", "en"]
+expect = "November 28, 2026, 14:12 (Saturday)"
+expect_fr = "28 novembre 2026 à 14h12 (samedi)"
+
+# ---------------------------------------------------------------- bitwise and bases (milestone 5)
+
+[[case]]
+input = "0xff & 0x0f"
+expect = "15"
+
+[[case]]
+input = "5 xor 3"
+expect = "6"
+
+[[case]]
+input = "1 << 4"
+expect = "16"
+
+[[case]]
+input = "not 5"
+expect = "-6"
+
+[[case]]
+input = "2 + ~5"
+expect = "-4"
+
+[[case]]
+input = "6 | 3"
+expect = "7"
+
+[[case]]
+input = "42 → base 36"
+expect = "16"
+
+# ---------------------------------------------------------------- currencies (milestone 5)
+
+[[case]]
+input = "$100 → €"
+rates = true
+expect = "90.90909091 EUR"
+
+[[case]]
+input = "100 € → $"
+none = true

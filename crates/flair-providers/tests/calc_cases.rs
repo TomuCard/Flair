@@ -7,9 +7,9 @@
 use std::collections::HashMap;
 
 use flair_core::i18n::{I18n, Lang};
-use flair_core::settings::config::{AngleUnit, DecimalSeparator};
+use flair_core::settings::config::{AngleUnit, DateFormat, DecimalSeparator};
 use flair_core::{CancellationToken, Provider, Query};
-use flair_providers::calc::{CalcProvider, Calculator, Settings, Texts};
+use flair_providers::calc::{CalcProvider, Calculator, FixedClock, Labels, Settings, Texts};
 use serde::Deserialize;
 
 const COMMON: &str = include_str!("../../../lexicon/tests/common.toml");
@@ -49,6 +49,20 @@ struct Case {
     binary_prefixes: bool,
     angle: Option<String>,
     digits: Option<usize>,
+    date: Option<String>,
+    #[serde(default)]
+    rates: bool,
+}
+
+/// Exchange rates of the tests (currency conversions enabled by `rates`).
+const RATES: &str =
+    r#"{"base":"EUR","date":"2026-11-26","rates":{"USD":1.1,"GBP":0.85,"CHF":0.95}}"#;
+
+/// The tests run on Thursday, November 26, 2026, 14:12 in Paris.
+const NOW: &str = "2026-11-26T14:12:00+01:00[Europe/Paris]";
+
+fn clock() -> std::sync::Arc<FixedClock> {
+    std::sync::Arc::new(FixedClock(NOW.parse().expect("test time")))
 }
 
 fn parse(text: &str) -> Vec<Case> {
@@ -87,6 +101,13 @@ fn settings(case: &Case, langs: &[&str], french: bool) -> Settings {
         },
         significant_digits: case.digits.unwrap_or(10),
         binary_prefixes: case.binary_prefixes,
+        date_format: match case.date.as_deref() {
+            Some("dmy") => DateFormat::Dmy,
+            Some("mdy") => DateFormat::Mdy,
+            Some("ymd") => DateFormat::Ymd,
+            _ => DateFormat::Auto,
+        },
+        labels: Labels::new(&I18n::new(if french { Lang::Fr } else { Lang::En })),
     }
 }
 
@@ -94,7 +115,16 @@ fn settings(case: &Case, langs: &[&str], french: bool) -> Settings {
 fn titles(case: &Case, langs: &[&str], french: bool) -> Vec<String> {
     let i18n = I18n::new(if french { Lang::Fr } else { Lang::En });
     let provider = CalcProvider::new(
-        Calculator::new(&settings(case, langs, french), &[]),
+        {
+            let calculator =
+                Calculator::new(&settings(case, langs, french), &[]).with_clock(clock());
+            if case.rates {
+                let rates = flair_providers::calc::currency::Rates::parse(RATES);
+                calculator.with_rates(std::sync::Arc::new(std::sync::RwLock::new(rates)))
+            } else {
+                calculator
+            }
+        },
         Texts::new(&i18n),
     );
     let mut items = provider.query(&Query::parse(&case.input), &CancellationToken::new());
