@@ -41,6 +41,8 @@ struct Case {
     none: bool,
     #[serde(default)]
     too_big: bool,
+    /// Message key of an expected error (`calc-division-by-zero`).
+    error: Option<String>,
     #[serde(default)]
     langs: Vec<String>,
     decimal: Option<String>,
@@ -145,10 +147,14 @@ fn check(case: &Case, langs: &[&str], expected_valid: bool) -> Vec<String> {
             }
             continue;
         }
-        if case.too_big {
-            let too_big = I18n::new(if french { Lang::Fr } else { Lang::En }).t("calc-too-big");
-            if got.first() != Some(&too_big) {
-                problems.push(format!("{context}: expected too big, got {got:?}"));
+        let error = case
+            .error
+            .clone()
+            .or_else(|| case.too_big.then(|| "calc-too-big".to_owned()));
+        if let Some(key) = error {
+            let message = I18n::new(if french { Lang::Fr } else { Lang::En }).t(&key);
+            if got.first() != Some(&message) {
+                problems.push(format!("{context}: expected {message:?}, got {got:?}"));
             }
             continue;
         }

@@ -794,7 +794,10 @@ impl Flair {
         let text = Query::parse(&self.input).text;
         let main = flair_providers::calc::MAIN_ID;
         if let Some(item) = self.results.iter().find(|r| r.id == main) {
-            self.last_calc = Some((text, item.clone()));
+            // An error (`Cannot divide by zero`) is shown, never kept.
+            if !item.actions.is_empty() {
+                self.last_calc = Some((text, item.clone()));
+            }
             return;
         }
         let continues = self.last_calc.as_ref().is_some_and(|(previous, _)| {

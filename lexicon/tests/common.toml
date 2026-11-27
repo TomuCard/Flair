@@ -1,6 +1,7 @@
 # Language-neutral cases (symbols, functions, international units), run with
 # every combination of input languages. Extra keys:
 # - `none = true`: not a calculation; `too_big = true`: "too big to compute";
+# - `error = "<message key>"`: an error message (`calc-division-by-zero`);
 # - `langs = ["fr", "en"]`: only when all these languages are active (mixed
 #   inputs);
 # - settings: `decimal` ("auto", ",", "."), `system` (system language),
@@ -295,7 +296,7 @@ expect = "86 °F"
 
 [[case]]
 input = "1 m^2 → cm^2"
-expect = "10000 cm^2"
+expect = "10000 cm²"
 
 [[case]]
 input = "1 bar → psi"
@@ -440,10 +441,6 @@ none = true
 
 [[case]]
 input = "notes.md"
-none = true
-
-[[case]]
-input = "1/0"
 none = true
 
 [[case]]
@@ -622,3 +619,119 @@ expect = "90.90909091 EUR"
 [[case]]
 input = "100 € → $"
 none = true
+
+# ---------------------------------------------------------------- errors and more dates
+
+[[case]]
+input = "1/0"
+error = "calc-division-by-zero"
+
+[[case]]
+input = "10 mod 0"
+error = "calc-division-by-zero"
+
+[[case]]
+input = "5 % 0"
+error = "calc-division-by-zero"
+
+[[case]]
+input = "log(0)"
+error = "calc-undefined"
+
+[[case]]
+input = "tan(90)"
+error = "calc-undefined"
+
+[[case]]
+input = "10 % 3"
+expect = "1"
+
+[[case]]
+input = "9:00 PST"
+expect = "18:00"
+expect_fr = "18h"
+
+[[case]]
+input = "9:00 EST → CET"
+expect = "15:00"
+expect_fr = "15h"
+
+[[case]]
+input = "unix 1700000000"
+langs = ["fr"]
+expect = "14/11/2023 22:13:20 UTC"
+
+# ---------------------------------------------------------------- areas, literals, functions
+
+[[case]]
+input = "1 ha → m²"
+expect = "10000 m²"
+
+[[case]]
+input = "5 m² + 3 m²"
+expect = "8 m²"
+
+[[case]]
+input = "3 m * 4 m"
+expect = "12 m²"
+
+[[case]]
+input = "1 km2 → ha"
+expect = "100 ha"
+
+[[case]]
+input = "2 cm3 → ml"
+expect = "2 ml"
+
+[[case]]
+input = "0xff"
+expect = "255"
+
+[[case]]
+input = "0b1010"
+expect = "10"
+
+[[case]]
+input = "1e3"
+expect = "1000"
+
+[[case]]
+input = "sin(pi/6)"
+expect = "0.5"
+
+[[case]]
+input = "max(1, 2, 3)"
+expect = "3"
+
+[[case]]
+input = "min(3, 4)"
+expect = "3"
+
+[[case]]
+input = "max(1 km, 900 m)"
+expect = "1 km"
+
+[[case]]
+input = "avg(2; 4; 6)"
+expect = "4"
+
+[[case]]
+input = "sum(1; 2; 3)"
+expect = "6"
+
+[[case]]
+input = "min(5; 2) + 1"
+expect = "3"
+
+[[case]]
+input = "5'11\" → cm"
+expect = "180.34 cm"
+
+[[case]]
+input = "100 c → f"
+expect = "212 °F"
+
+[[case]]
+input = "5m2s"
+expect = "5m 2s"
+expect_fr = "5 min 2 s"

@@ -20,6 +20,13 @@ sense = "convert_to"
 when = { between = ["quantity", "unit"] }
 priority = 30
 
+# `now in UTC`, `3pm Tokyo in Paris`, `15:00 in Tokyo`.
+[[word]]
+forms = ["in"]
+sense = "convert_to"
+when = { after = ["sense:now", "sense:today", "sense:tomorrow", "sense:yesterday", "word", "time", "sense:const:c"] }
+priority = 30
+
 [[word]]
 forms = ["in"]
 sense = "relative_in"
@@ -182,6 +189,82 @@ sense = "func:sqrt"
 forms = ["cube root of", "cube root"]
 sense = "func:cbrt"
 
+# `what is 2 + 2`, `is 17 prime`.
+[[word]]
+forms = ["what is", "what's", "whats", "how much is", "calculate", "compute", "is"]
+sense = "ignore"
+when = { position = "start" }
+
+[[word]]
+forms = ["half of", "half"]
+sense = "fend:0.5 *"
+when = { position = "start" }
+
+[[word]]
+forms = ["twice", "double"]
+sense = "fend:2 *"
+when = { position = "start" }
+
+[[word]]
+forms = ["triple"]
+sense = "fend:3 *"
+when = { position = "start" }
+
+[[word]]
+forms = ["a third of", "third of", "one third of"]
+sense = "fend:(1/3) *"
+
+[[word]]
+forms = ["a quarter of", "quarter of", "one quarter of"]
+sense = "fend:(1/4) *"
+
+[[word]]
+forms = ["speed of light"]
+sense = "const:c"
+
+# `in hex`: a conversion.
+[[word]]
+forms = ["in"]
+sense = "convert_to"
+when = { after = ["number", "quantity"], before = ["sense:fend:hex", "sense:fend:binary", "sense:fend:octal", "sense:fend:decimal"] }
+priority = 30
+
+[[word]]
+forms = ["square foot", "square feet", "sq ft", "sqft"]
+sense = "unit:ft^2"
+
+[[word]]
+forms = ["square meter", "square meters", "square metre", "square metres", "sq m"]
+sense = "unit:m^2"
+
+[[word]]
+forms = ["square kilometer", "square kilometers", "square kilometre", "square kilometres", "sq km"]
+sense = "unit:km^2"
+
+[[word]]
+forms = ["square mile", "square miles", "sq mi"]
+sense = "unit:mi^2"
+
+[[word]]
+forms = ["square inch", "square inches", "sq in"]
+sense = "unit:inch^2"
+
+[[word]]
+forms = ["cubic meter", "cubic meters", "cubic metre", "cubic metres"]
+sense = "unit:m^3"
+
+[[word]]
+forms = ["cubic foot", "cubic feet"]
+sense = "unit:ft^3"
+
+[[word]]
+forms = ["cubic centimeter", "cubic centimeters", "cubic centimetre", "cubic centimetres"]
+sense = "unit:cm^3"
+
+[[word]]
+forms = ["is prime", "a prime", "prime number"]
+sense = "func:isprime"
+
 [[word]]
 forms = ["prime"]
 sense = "func:isprime"
@@ -240,6 +323,14 @@ forms = ["since"]
 sense = "since"
 
 [[word]]
+forms = ["what day is it", "what day is today", "what's the date", "what is the date", "what's today", "today's date", "date today", "what is today"]
+sense = "today"
+
+[[word]]
+forms = ["what time is it", "what time", "what's the time", "current time"]
+sense = "now"
+
+[[word]]
 forms = ["what day", "what day is", "what day was", "what day is it on"]
 sense = "what_day"
 
@@ -251,6 +342,78 @@ sense = "time_in"
 forms = ["at"]
 sense = "rate_at"
 when = { between = ["quantity", "quantity"] }
+
+# `tomorrow at 3pm`, `3pm at Tokyo`.
+[[word]]
+forms = ["at"]
+sense = "at"
+when = { before = ["time", "word"] }
+priority = 20
+
+[[word]]
+forms = ["from"]
+sense = "from"
+when = { position = "start", before = "time" }
+
+# `time until 6pm`, `how long since …`.
+[[word]]
+forms = ["time", "how long", "how much time"]
+sense = "ignore"
+when = { before = ["sense:until", "sense:since"] }
+
+[[word]]
+forms = ["noon", "midday"]
+sense = "noon"
+
+[[word]]
+forms = ["midnight"]
+sense = "midnight"
+
+[[word]]
+forms = ["next"]
+sense = "next"
+
+[[word]]
+forms = ["last"]
+sense = "last"
+
+[[word]]
+forms = ["from now", "later", "from today"]
+sense = "from_now"
+when = { position = "end", after = "duration" }
+
+[[word]]
+forms = ["age", "how old", "age since"]
+sense = "age"
+
+# Holidays (without a year: the next one, or the last one after `since`).
+[[word]]
+forms = ["christmas", "xmas", "christmas day"]
+sense = "holiday:12-25"
+
+[[word]]
+forms = ["christmas eve"]
+sense = "holiday:12-24"
+
+[[word]]
+forms = ["new year", "new year's", "new years", "new year's day", "new years day"]
+sense = "holiday:01-01"
+
+[[word]]
+forms = ["new year's eve", "new years eve"]
+sense = "holiday:12-31"
+
+[[word]]
+forms = ["valentine's day", "valentines day", "valentine's", "valentines"]
+sense = "holiday:02-14"
+
+[[word]]
+forms = ["easter"]
+sense = "holiday:easter"
+
+[[word]]
+forms = ["independence day"]
+sense = "holiday:07-04"
 
 [[word]]
 forms = ["st", "nd", "rd", "th"]
@@ -332,6 +495,73 @@ sense = "weekday:6"
 [[word]]
 forms = ["Sunday"]
 sense = "weekday:7"
+
+# Countries with one time zone, and city nicknames.
+[[word]]
+forms = ["Japan"]
+sense = "tz:Asia/Tokyo"
+
+[[word]]
+forms = ["China", "Beijing"]
+sense = "tz:Asia/Shanghai"
+
+[[word]]
+forms = ["India"]
+sense = "tz:Asia/Kolkata"
+
+[[word]]
+forms = ["Korea", "South Korea"]
+sense = "tz:Asia/Seoul"
+
+[[word]]
+forms = ["UK", "England", "Britain"]
+sense = "tz:Europe/London"
+
+[[word]]
+forms = ["Germany"]
+sense = "tz:Europe/Berlin"
+
+[[word]]
+forms = ["Spain"]
+sense = "tz:Europe/Madrid"
+
+[[word]]
+forms = ["Italy"]
+sense = "tz:Europe/Rome"
+
+[[word]]
+forms = ["Switzerland"]
+sense = "tz:Europe/Zurich"
+
+[[word]]
+forms = ["NYC"]
+sense = "tz:America/New_York"
+
+[[word]]
+forms = ["LA"]
+sense = "tz:America/Los_Angeles"
+case_sensitive = true
+
+[[word]]
+forms = ["SF", "San Francisco"]
+sense = "tz:America/Los_Angeles"
+
+# Time zone abbreviations (zones with summer time: `EST` in July is EDT).
+[[word]]
+forms = ["pst", "pdt", "pacific time"]
+sense = "tz:America/Los_Angeles"
+
+[[word]]
+forms = ["edt", "eastern time"]
+sense = "tz:America/New_York"
+
+[[word]]
+forms = ["cst", "cdt", "central time"]
+sense = "tz:America/Chicago"
+
+[[word]]
+forms = ["mst", "mdt", "mountain time"]
+sense = "tz:America/Denver"
 
 # ---------------------------------------------------------------- currencies
 

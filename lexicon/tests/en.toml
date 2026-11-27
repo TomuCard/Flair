@@ -451,3 +451,239 @@ id = "currency-words"
 input = "20 pounds sterling to swiss francs"
 rates = true
 expect = "22.35294118 CHF"
+
+# ---------------------------------------------------------------- dates and times: more forms
+
+[[case]]
+id = "zone-now-to"
+input = "now Tokyo to Paris"
+expect = "14:12 (Thursday, November 26)"
+expect_fr = "14h12 (jeudi 26 novembre)"
+
+[[case]]
+id = "time-in-to"
+input = "time in Tokyo to Paris"
+expect = "14:12 (Thursday, November 26)"
+expect_fr = "14h12 (jeudi 26 novembre)"
+
+[[case]]
+id = "time-in-country"
+input = "time in Japan"
+expect = "22:12 (Thursday, November 26)"
+expect_fr = "22h12 (jeudi 26 novembre)"
+
+[[case]]
+id = "time-in-utc"
+input = "now in UTC"
+expect = "13:12 (Thursday, November 26)"
+expect_fr = "13h12 (jeudi 26 novembre)"
+
+[[case]]
+id = "zone-noon"
+input = "noon Tokyo to Paris"
+expect = "4:00"
+expect_fr = "4h"
+
+[[case]]
+id = "zone-to-local"
+input = "3pm Tokyo"
+shared = true
+expect = "7:00"
+expect_fr = "7h"
+
+[[case]]
+id = "duration-plus-now"
+input = "5 days + now"
+expect = "December 1, 2026, 14:12 (Tuesday)"
+expect_fr = "1er décembre 2026 à 14h12 (mardi)"
+
+[[case]]
+id = "years-since-year"
+input = "years since 1999"
+expect = "27 years"
+expect_fr = "27 ans"
+
+[[case]]
+id = "months-since"
+input = "months since January 2020"
+expect = "82 months"
+expect_fr = "82 mois"
+
+[[case]]
+id = "age"
+input = "age July 14 1990"
+expect = "36 years"
+expect_fr = "36 ans"
+
+[[case]]
+id = "hours-until"
+input = "hours until 6pm"
+expect = "3.8 hours"
+expect_fr = "3,8 heures"
+
+[[case]]
+id = "time-until"
+input = "time until 6pm"
+expect = "3h 48m"
+expect_fr = "3h48"
+
+[[case]]
+id = "seconds-until-midnight"
+input = "seconds until midnight"
+expect = "35280 seconds"
+expect_fr = "35280 secondes"
+
+[[case]]
+id = "days-until-holiday"
+input = "days until Christmas"
+expect = "29 days"
+expect_fr = "29 jours"
+
+[[case]]
+id = "until-weekday"
+input = "until Friday"
+expect = "1 day"
+expect_fr = "1 jour"
+
+[[case]]
+id = "next-weekday"
+input = "next Monday"
+expect = "November 30, 2026 (Monday)"
+expect_fr = "30 novembre 2026 (lundi)"
+
+[[case]]
+id = "tomorrow-at"
+input = "tomorrow at 2pm"
+expect = "November 27, 2026, 14:00 (Friday)"
+expect_fr = "27 novembre 2026 à 14h (vendredi)"
+
+[[case]]
+id = "in-days-at"
+input = "in 3 days at 2pm"
+expect = "November 29, 2026, 14:00 (Sunday)"
+expect_fr = "29 novembre 2026 à 14h (dimanche)"
+
+[[case]]
+id = "from-now"
+input = "3 days from now"
+expect = "November 29, 2026, 14:12 (Sunday)"
+expect_fr = "29 novembre 2026 à 14h12 (dimanche)"
+
+[[case]]
+id = "time-range"
+input = "from 9am to 5:30pm"
+expect = "8h 30m"
+expect_fr = "8h30"
+
+[[case]]
+id = "time-range-night"
+input = "from 10pm to 6am"
+expect = "8h"
+expect_fr = "8h"
+
+[[case]]
+id = "what-day-holiday"
+input = "what day is Christmas"
+expect = "Friday, December 25, 2026"
+expect_fr = "vendredi 25 décembre 2026"
+
+[[case]]
+id = "what-day-easter"
+input = "what day is Easter"
+expect = "Sunday, March 28, 2027"
+expect_fr = "dimanche 28 mars 2027"
+
+[[case]]
+id = "what-day-today"
+input = "what day is it"
+expect = "November 26, 2026 (Thursday)"
+expect_fr = "26 novembre 2026 (jeudi)"
+
+[[case]]
+id = "now-alone"
+input = "now"
+expect = "November 26, 2026, 14:12 (Thursday)"
+expect_fr = "26 novembre 2026 à 14h12 (jeudi)"
+
+[[case]]
+id = "tomorrow-alone"
+input = "tomorrow"
+expect = "November 27, 2026 (Friday)"
+expect_fr = "27 novembre 2026 (vendredi)"
+
+[[case]]
+id = "since-year"
+input = "since 1999"
+expect = "27 years"
+expect_fr = "27 ans"
+
+[[case]]
+id = "zone-linked"
+input = "now in Tokyo to Paris"
+expect = "14:12 (Thursday, November 26)"
+expect_fr = "14h12 (jeudi 26 novembre)"
+variants = ["Tokyo 22:12 → Paris 14:12"]
+twin = false
+
+[[case]]
+id = "zone-abbreviation-lowercase"
+input = "9am pst to Paris"
+expect = "18:00"
+expect_fr = "18h"
+twin = false
+
+# ---------------------------------------------------------------- calculations: more forms
+
+[[case]]
+id = "area-words"
+input = "20 square meters in m2"
+expect = "20 m²"
+expect_fr = "20 m²"
+
+[[case]]
+id = "filler"
+input = "what is 2 + 2"
+expect = "4"
+expect_fr = "4"
+
+[[case]]
+id = "half"
+input = "half of 50"
+expect = "25"
+expect_fr = "25"
+
+[[case]]
+id = "third"
+input = "a third of 90"
+expect = "30"
+expect_fr = "30"
+
+[[case]]
+id = "prime-question"
+input = "is 17 prime"
+expect = "17 is prime"
+expect_fr = "17 est premier"
+
+[[case]]
+id = "octal"
+input = "12 in octal"
+expect = "0o14"
+expect_fr = "0o14"
+
+[[case]]
+id = "light-year-short"
+input = "1 light-year in km"
+expect = "9460730472580.8 km"
+expect_fr = "9460730472580,8 km"
+
+[[case]]
+id = "speed-of-light"
+input = "speed of light in km/h"
+expect = "1079252848.8 km/h"
+expect_fr = "1079252848,8 km/h"
+
+[[case]]
+id = "temperature-letters"
+input = "32 f to c"
+expect = "0 °C"
+expect_fr = "0 °C"

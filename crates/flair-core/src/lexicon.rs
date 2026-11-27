@@ -24,7 +24,7 @@ pub const MAX_FORM_TOKENS: usize = 6;
 
 /// Classes a condition may refer to.
 pub const CLASSES: &[&str] = &[
-    "number", "quantity", "unit", "duration", "time", "date", "percent", "start", "end",
+    "number", "quantity", "unit", "duration", "time", "date", "percent", "word", "start", "end",
 ];
 
 /// Senses that are not `prefix:value` (see `lexicon/README.md`).
@@ -46,11 +46,20 @@ pub const SENSES: &[&str] = &[
     "tomorrow",
     "yesterday",
     "unix",
+    "unix_at",
+    "at",
+    "from",
+    "next",
+    "last",
+    "from_now",
+    "noon",
+    "midnight",
+    "age",
 ];
 
 /// Prefixes of parameterized senses (`unit:day`, `op:*`, `func:sqrt`…).
 pub const SENSE_PREFIXES: &[&str] = &[
-    "unit:", "op:", "func:", "const:", "fend:", "month:", "weekday:", "tz:",
+    "unit:", "op:", "func:", "const:", "fend:", "month:", "weekday:", "tz:", "holiday:",
 ];
 
 /// Date order of a language, for `01/02/2026`.
@@ -326,6 +335,7 @@ fn class_example(class: &str) -> &str {
         "duration" => "2 h",
         "time" => "14:30",
         "date" => "2026-01-01",
+        "word" => "Tokyo",
         "percent" => "15 %",
         "start" | "end" => "",
         _ => "x",
