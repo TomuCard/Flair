@@ -9,6 +9,7 @@
 //! - [`i18n`]: user interface translations (Fluent).
 
 pub mod archive;
+pub mod command_words;
 pub mod frecency;
 pub mod history;
 pub mod i18n;

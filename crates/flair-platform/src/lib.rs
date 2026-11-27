@@ -25,6 +25,7 @@ pub mod power;
 pub mod priority;
 pub mod process;
 pub mod renderer;
+pub mod system;
 pub mod theme;
 pub mod tray;
 pub mod window;

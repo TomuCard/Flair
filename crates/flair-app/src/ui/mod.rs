@@ -61,6 +61,19 @@ pub struct Flair {
     update_available: Option<String>,
     /// Backup made before the last import (`> undo`).
     last_import_backup: Option<PathBuf>,
+    /// Last setting changed by a command, with its previous value (`> undo`,
+    /// before the import backup).
+    last_setting: Option<(String, Option<toml::Value>)>,
+    /// Words of the `>` commands, from the active languages.
+    words: flair_core::command_words::CommandWords,
+    /// Input languages available (`> langue`).
+    languages: Vec<crate::commands::Language>,
+    /// What `Tab` writes for each command result.
+    completions: Vec<Option<String>>,
+    /// Id of the row waiting for a second `Enter` (shut down, restart…).
+    pending_confirm: Option<String>,
+    /// A setting is previewed (the look differs from the configuration).
+    previewing: bool,
     i18n: Arc<I18n>,
     tokens: Tokens,
     opacity: f32,
@@ -188,6 +201,9 @@ impl Flair {
             || !messages.is_empty()
             || init.initial != Initial::Search;
         let update_files = updater::Files::new(&init.paths.data_dir);
+        let lexicon_dir = init.paths.lexicon_dir();
+        let words = crate::commands::words(&init.config, &lexicon_dir, init.i18n.lang());
+        let languages = crate::commands::languages(&lexicon_dir);
         let mut state = Self {
             window: None,
             visible: false,
@@ -200,6 +216,12 @@ impl Flair {
             dialog_open: false,
             update_available: None,
             last_import_backup: None,
+            last_setting: None,
+            words,
+            languages,
+            completions: Vec::new(),
+            pending_confirm: None,
+            previewing: false,
             i18n: init.i18n,
             tokens: init.tokens,
             #[allow(clippy::cast_possible_truncation)]
@@ -544,7 +566,11 @@ impl Flair {
             self.provider = sources.providers(&self.i18n, &config);
         }
         self.notices = notices_for(&self.i18n, &loaded.issues);
+        let lexicon_dir = self.paths.lexicon_dir();
+        self.words = crate::commands::words(&config, &lexicon_dir, self.i18n.lang());
+        self.languages = crate::commands::languages(&lexicon_dir);
         self.config = config;
+        self.previewing = false;
         tracing::info!("configuration reloaded");
     }
 
@@ -584,6 +610,8 @@ impl Flair {
             self.screen_rows.clear();
         }
         self.input = value;
+        self.pending_confirm = None;
+        self.completions.clear();
         self.cancel.cancel();
         self.cancel = CancellationToken::new();
         self.query_seq += 1;
@@ -597,14 +625,21 @@ impl Flair {
             });
             let cx = crate::commands::Context {
                 i18n: &self.i18n,
+                words: &self.words,
+                config: &self.config,
+                languages: &self.languages,
                 portable,
                 update_available: self.update_available.as_deref(),
             };
-            self.results = crate::commands::rows(&query.text, &cx);
+            let rows = crate::commands::rows(&query.text, &cx);
+            self.completions = rows.iter().map(|r| r.completion.clone()).collect();
+            self.results = rows.into_iter().map(|r| r.item).collect();
             self.selected = 0;
+            self.update_preview();
             self.dev.shot_pending = self.dev.screenshot.is_some();
             return Task::batch([self.resize(), self.scroll_to(0.0)]);
         }
+        self.end_preview();
         // `=` alone shows the calculation history; otherwise nothing to search.
         if query.is_empty() && query.filter != Some(ProviderKind::Calculator) {
             self.results.clear();
@@ -673,6 +708,8 @@ impl Flair {
             return Task::none();
         }
         self.selected = index.min(len - 1);
+        self.pending_confirm = None;
+        self.update_preview();
         self.ensure_visible()
     }
 
@@ -704,14 +741,15 @@ impl Flair {
         let Some(item) = self.rows().get(self.selected) else {
             return Task::none();
         };
+        let showing_results = std::ptr::eq(self.rows().as_ptr(), self.results.as_ptr());
+        let command_completion = showing_results
+            .then(|| self.completions.get(self.selected).cloned().flatten())
+            .flatten();
         let text = match (item.provider, item.primary_action()) {
             (ProviderKind::File, _) => file_completion(&item.copy_text(), &self.input),
             // Commands keep their `>` prefix: `> ver` + Tab gives `> version`.
-            (_, Some(Action::Internal { command })) => {
-                match crate::commands::completion(command, self.i18n.lang()) {
-                    Some(text) => text,
-                    None => return Task::none(),
-                }
+            (ProviderKind::Command | ProviderKind::System, _) if command_completion.is_some() => {
+                command_completion.unwrap_or_default()
             }
             // Information rows (notices, statistics) cannot be completed.
             (ProviderKind::Command, None) => return Task::none(),
@@ -724,7 +762,7 @@ impl Flair {
     }
 
     fn activate(&mut self, index: usize, which: Which) -> Task<Message> {
-        let Some(item) = self.rows().get(index) else {
+        let Some(item) = self.rows().get(index).cloned() else {
             return Task::none();
         };
         let action = match which {
@@ -736,6 +774,20 @@ impl Flair {
         let Some(action) = action.cloned() else {
             return Task::none();
         };
+        // Shut down, restart, log out, empty the trash, clear the history:
+        // a second `Enter` confirms.
+        if crate::commands::needs_confirmation(&action)
+            && self.pending_confirm.as_deref() != Some(item.id.as_str())
+        {
+            let id = item.id.clone();
+            let hint = self.i18n.t("confirm-again");
+            if let Some(row) = self.results.iter_mut().find(|r| r.id == id) {
+                row.subtitle = Some(hint);
+            }
+            self.pending_confirm = Some(id);
+            return Task::none();
+        }
+        self.pending_confirm = None;
         tracing::info!(id = %item.id, ?action, "activate");
         // Copied calculations go to the history (`=` alone lists them).
         if item.provider == ProviderKind::Calculator
@@ -789,8 +841,15 @@ impl Flair {
                 launch(target, true);
                 self.hide()
             }
-            // System commands: milestone 7.
-            Action::SystemCommand(_) => self.hide(),
+            Action::SystemCommand(command) => {
+                // Off the interface thread: logind or the shell may take time.
+                std::thread::spawn(move || {
+                    if let Err(e) = flair_platform::system::run(command) {
+                        tracing::error!(?command, "system command failed: {e}");
+                    }
+                });
+                self.hide()
+            }
         }
     }
 
@@ -838,6 +897,8 @@ impl Flair {
         }
         self.hovered = None;
         self.ctrl_held = false;
+        self.pending_confirm = None;
+        self.end_preview();
         if !self.config.keep_last_query {
             self.input.clear();
             self.results.clear();
@@ -859,6 +920,48 @@ impl Flair {
     }
 
     /// Height of the visible frame for the current rows.
+    /// Previews the setting of the selected row when it only changes the
+    /// look (`> config theme.mode dark`); `Enter` keeps it, anything else
+    /// goes back.
+    fn update_preview(&mut self) {
+        let preview = std::ptr::eq(self.rows().as_ptr(), self.results.as_ptr())
+            .then(|| self.results.get(self.selected))
+            .flatten()
+            .and_then(|row| match row.primary_action() {
+                Some(Action::Internal { command }) => {
+                    crate::commands::settings::decode_set(command)
+                }
+                _ => None,
+            })
+            .filter(|(key, _)| crate::commands::settings::PREVIEWED.contains(&key.as_str()))
+            .and_then(|(key, value)| {
+                crate::commands::settings::with_value(&self.config, &key, &value)
+            });
+        match preview {
+            Some(config) => {
+                self.tokens = crate::themes::active(&config).tokens();
+                #[allow(clippy::cast_possible_truncation)]
+                {
+                    self.opacity = config.theme.opacity as f32;
+                }
+                self.previewing = true;
+            }
+            None => self.end_preview(),
+        }
+    }
+
+    /// Back to the look of the configuration.
+    fn end_preview(&mut self) {
+        if self.previewing {
+            self.tokens = crate::themes::active(&self.config).tokens();
+            #[allow(clippy::cast_possible_truncation)]
+            {
+                self.opacity = self.config.theme.opacity as f32;
+            }
+            self.previewing = false;
+        }
+    }
+
     fn frame_height(&self) -> f32 {
         design::window_height(self.rows().iter().map(view::row_height))
     }
@@ -1273,10 +1376,94 @@ mod tests {
         );
     }
 
+    /// An app writing its configuration in a fresh temporary file.
+    fn app_with_config(tag: &str) -> (Flair, PathBuf) {
+        let mut app = app();
+        let dir =
+            std::env::temp_dir().join(format!("flair-ui-config-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("dir");
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "# mine\nmax_results = 8 # kept\n").expect("write");
+        app.config_path = path.clone();
+        (app, dir)
+    }
+
+    #[test]
+    fn config_commands_write_apply_and_undo() {
+        let (mut app, dir) = app_with_config("set");
+        let _ = app.update(Message::InputChanged("> config max_results 12".into()));
+        assert!(
+            app.results[0].title.contains("12"),
+            "{:?}",
+            app.results[0].title
+        );
+        named(&mut app, Named::Enter, Code::Enter);
+        assert_eq!(app.config.max_results, 12);
+        let text = std::fs::read_to_string(app.config_path.clone()).expect("read");
+        assert_eq!(text, "# mine\nmax_results = 12 # kept\n");
+        // Invalid: a message, nothing written.
+        let _ = app.update(Message::InputChanged("> config max_results 99".into()));
+        assert!(app.results[0].actions.is_empty());
+        named(&mut app, Named::Enter, Code::Enter);
+        assert_eq!(app.config.max_results, 12);
+        // `> annuler` restores the previous value.
+        let _ = app.update(Message::InputChanged("> annuler".into()));
+        named(&mut app, Named::Enter, Code::Enter);
+        assert_eq!(app.config.max_results, 8);
+        assert!(
+            std::fs::read_to_string(app.config_path.clone())
+                .expect("read")
+                .contains("max_results = 8 # kept")
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn looks_are_previewed_then_restored() {
+        let (mut app, dir) = app_with_config("preview");
+        let before = app.opacity;
+        let _ = app.update(Message::InputChanged("> transparence 0.9".into()));
+        assert!((app.opacity - 0.9).abs() < 1e-6, "previewed");
+        // Escape clears the field: back to the configured look.
+        named(&mut app, Named::Escape, Code::Escape);
+        assert!((app.opacity - before).abs() < 1e-6, "restored");
+        // Browsing the choices previews each; another command ends it.
+        let _ = app.update(Message::InputChanged("> config theme.mode ".into()));
+        assert!(!app.previewing, "first row: the setting itself");
+        named(&mut app, Named::ArrowDown, Code::ArrowDown);
+        assert!(app.previewing);
+        let _ = app.update(Message::InputChanged("> stats".into()));
+        assert!(!app.previewing);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn destructive_commands_need_a_second_enter() {
+        let mut app = app();
+        let _ = app.update(Message::InputChanged("> historique effacer".into()));
+        assert_eq!(app.results[0].id, "cmd:history_clear");
+        named(&mut app, Named::Enter, Code::Enter);
+        assert_eq!(app.pending_confirm.as_deref(), Some("cmd:history_clear"));
+        assert_eq!(
+            app.results[0].subtitle.as_deref(),
+            Some("Entrée à nouveau pour confirmer")
+        );
+        // Moving away cancels the confirmation.
+        named(&mut app, Named::ArrowDown, Code::ArrowDown);
+        assert_eq!(app.pending_confirm, None);
+        named(&mut app, Named::Enter, Code::Enter);
+        named(&mut app, Named::Enter, Code::Enter);
+        assert_eq!(app.pending_confirm, None, "confirmed and run");
+    }
+
     #[test]
     fn tab_on_a_command_keeps_the_prefix() {
         let mut app = app();
+        // `> ver` also finds `verrouiller`; `> versi` only the version.
         let _ = app.update(Message::InputChanged("> ver".into()));
+        assert_eq!(app.results.len(), 2);
+        let _ = app.update(Message::InputChanged("> versi".into()));
         assert_eq!(app.results.len(), 1);
         named(&mut app, Named::Tab, Code::Tab);
         assert_eq!(app.input, "> version");

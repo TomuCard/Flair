@@ -50,6 +50,16 @@ impl History {
         &self.items
     }
 
+    /// Forgets every calculation (`> history clear`), file included.
+    pub fn clear(&mut self) {
+        self.items.clear();
+        if let Some(file) = &self.file
+            && let Err(e) = crate::archive::write_atomic(file, b"[]")
+        {
+            tracing::warn!(error = %e, "cannot clear the calculation history");
+        }
+    }
+
     /// Adds an input at the top (moving it if already there), then saves.
     pub fn record(&mut self, input: &str) {
         let input = input.trim();
@@ -93,6 +103,10 @@ mod tests {
         let back = History::load(&file, 10);
         assert_eq!(back.items(), ["5 km en miles", "15% de 240"]);
         std::fs::write(&file, "not json").expect("write");
+        assert!(History::load(&file, 10).items().is_empty());
+        let mut h = History::load(&file, 10);
+        h.record("1+1");
+        h.clear();
         assert!(History::load(&file, 10).items().is_empty());
         let _ = std::fs::remove_dir_all(dir);
     }

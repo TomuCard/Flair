@@ -6,7 +6,7 @@ Launcher clavier façon Spotlight / Raycast / PowerToys Run, en Rust, pour **Win
 |---|---|---|
 | ![](docs/screenshots/dark-en-apps.png) | ![](docs/screenshots/dark-en-calc.png) | ![](docs/screenshots/light-fr-apps.png) |
 
-> **État : jalon 6 (fichiers).** Flair est résident (icône de notification, raccourci global, instance unique, aucun réveil fenêtre cachée), s'installe lui-même, se met à jour par `> mise à jour` avec des versions signées publiées à chaque push sur `main`, et sauvegarde tout dans un fichier `.flair`. Il trouve et lance les **applications installées** (Windows et Linux, avec leurs icônes), classées par `nucleo-matcher` et par la frecency, et **calcule** en français et en anglais à la fois (nombres, fonctions, unités, octets, durées, heures, dates, fuseaux horaires, horodatages Unix, bases, opérations bit à bit, temps de transfert, devises), et **cherche les fichiers** dans un index compact ouvert depuis le disque, tenu à jour en direct. Le web et les commandes système arrivent au jalon 7. Le cahier des charges complet est dans [`PROMPT.md`](PROMPT.md).
+> **État : jalon 7 (web, système et commandes).** Flair est résident (icône de notification, raccourci global, instance unique, aucun réveil fenêtre cachée), s'installe lui-même, se met à jour par `> mise à jour` avec des versions signées publiées à chaque push sur `main`, et sauvegarde tout dans un fichier `.flair`. Il trouve et lance les **applications installées** (Windows et Linux, avec leurs icônes), classées par `nucleo-matcher` et par la frecency, et **calcule** en français et en anglais à la fois (nombres, fonctions, unités, octets, durées, heures, dates, fuseaux horaires, horodatages Unix, bases, opérations bit à bit, temps de transfert, devises), et **cherche les fichiers** dans un index compact ouvert depuis le disque, tenu à jour en direct. La recherche web passe par des mots-clés configurables, les commandes système (verrouiller, éteindre…) sont reconnues en français et en anglais avec confirmation, et **tout se règle depuis Flair** avec les commandes `>` (`> config`, `> langue`, `> help`). Le cahier des charges complet est dans [`PROMPT.md`](PROMPT.md).
 
 ## Applications
 
@@ -118,23 +118,43 @@ Flair tourne en permanence en arrière-plan ; la fenêtre est cachée et réaffi
 | `flair --uninstall` | Affiche l'écran de désinstallation |
 | `flair --version` | Version, commit, date de compilation et canal |
 
-### Commandes `>` disponibles
+### Commandes `>`
+
+Tout ce qui se règle dans `config.toml` se règle aussi depuis Flair. `>` seul affiche les commandes les plus utiles et `> help` / `> aide` en dernier ; `> help` les liste **toutes** par catégorie (Réglages, Apparence, Langues, Recherche et fichiers, Web, Calcul, Système, Flair), avec une description et un exemple ; `> help fich` filtre ; `Entrée` sur une commande affiche sa syntaxe, `Tab` l'écrit dans le champ. L'aide est générée depuis le catalogue des commandes, les fichiers de langue et le registre des réglages (un test vérifie que chaque commande a un titre, une description et un exemple dans les deux langues, et des mots dans chaque langue).
+
+**Mots des commandes** : dans les fichiers de langue (`[commands]`, `[arguments]` de `lexicon/fr.toml`, `en.toml`), ils suivent donc les langues actives : avec le français désactivé, `> verrouiller` n'est plus reconnu, `> lock` l'est. `> help` / `> aide`, `> config` et `> langue` / `> language` sont aussi dans `common.toml` et marchent toujours (on peut toujours réactiver une langue). Accents et casse ignorés ; la forme la plus longue l'emporte (`> redémarrer flair` avant `> redémarrer`). **Autocomplétion** : `> con`, `> config the`, `> config theme.mode ` proposent les commandes, les réglages puis les valeurs ; `Tab` complète.
 
 | Commande (FR / EN) | Effet |
 |---|---|
-| `> mise à jour` / `> update` | Cherche la dernière version du canal ; `Entrée` l'installe |
-| `> mise à jour annuler` / `> update rollback` | Revient à la version précédente (conservée sur le disque) |
-| `> mise à jour canal stable` / `> update channel main` | Change de canal |
-| `> version` | Version, commit, date et canal |
-| `> statistiques` / `> stats` | Mémoire, réveils, temps du dernier affichage, moteur de rendu |
-| `> exporter` / `> export` | « Tout » ou « Réglages seulement », puis boîte « Enregistrer sous » |
-| `> importer` / `> import` | « Choisir un fichier… » ou une sauvegarde automatique, résumé, puis « Tout remplacer » ou « Ajouter les thèmes et lexiques » |
-| `> annuler` / `> undo` | Revient à l'état d'avant le dernier import |
-| `> installer` / `> install` | En mode portable : installer Flair |
-| `> désinstaller` / `> uninstall` | Désinstaller |
-| `> quitter` / `> quit` | Fermer Flair |
+| `> config` / `> réglages` / `> settings` | Tous les réglages avec leur valeur, leur défaut s'il diffère et les valeurs permises ; filtre flou sur la clé, le nom et les alias des deux langues (`> config transp` → `theme.opacity`). `Entrée` bascule un booléen, liste les choix d'une liste de valeurs, ou écrit `> config <réglage> <valeur actuelle>` prêt à modifier |
+| `> config <réglage> <valeur>` | `> config max_results 10`, `> config transparence 0.9`, `> config calc.angle_unit rad` ; `défaut` / `reset` remet la valeur par défaut ; listes : `ajouter` / `add`, `retirer` / `remove` |
+| `> config ouvrir` / `open`, `> config recharger` / `reload` | Ouvre le fichier dans l'éditeur par défaut, le relit |
+| `> annuler` / `> undo` | Annule le dernier changement de réglage fait par commande, sinon le dernier import |
+| `> transparence 0.9`, `> raccourci Ctrl+Espace`, `> démarrage on`, `> résultats 10`, `> icônes mono`, `> rendu cpu` | Raccourcis vers un réglage (`opacity`, `hotkey`, `autostart`, `results`, `icons`, `renderer`) |
+| `> fichiers` / `> files` | `ajouter D:\Projets`, `exclure .venv`, `cachés on`, `retirer …` ; seul : les réglages des fichiers |
+| `> web` | Liste les moteurs (`Entrée` : chercher avec) ; `> web ajouter yt YouTube https://www.youtube.com/results?search_query={query}` ; `> web retirer yt` |
+| `> calcul` / `> calc` | `angle rad`, `chiffres 15`, `devises on`, `octets binaire` |
+| `> batterie pause on` / `> battery pause off` | Pause de l'indexation sur batterie |
+| `> langue` / `> language` | Langues de saisie avec leur état et leur ordre (`Entrée` active ou désactive), et la langue de l'interface ; `> langue fr désactiver`, `> language en prefer`, `> langue interface en`. Désactiver la dernière langue active est refusé |
+| `> verrouiller` / `> lock`, `> veille` / `> sleep`, `> éteindre` / `> shutdown`, `> redémarrer` / `> restart`, `> se déconnecter` / `> log out`, `> vider la corbeille` / `> empty trash` | Commandes système (aussi trouvées sans `>` : taper `verrouiller` suffit). Éteindre, redémarrer, se déconnecter et vider la corbeille demandent un **second `Entrée`** |
+| `> réindexer` / `> reindex` | Reparcourt les applications et les fichiers |
+| `> historique effacer` / `> history clear` | Efface l'historique des calculs et la frecency (second `Entrée`) |
+| `> statistiques` / `> stats`, `> journaux` / `> logs` | Statistiques ; ouvre le dossier des journaux |
+| `> mise à jour` / `> update` (+ `annuler` / `rollback`, `canal stable`) | Mise à jour, retour à la version précédente, canal |
+| `> exporter` / `> export`, `> importer` / `> import` | Fichier `.flair` (voir plus bas) |
+| `> redémarrer flair` / `> restart flair` | Relance Flair (proposé après un réglage appliqué au démarrage : `log_level`, `resources.renderer`) |
+| `> version`, `> installer` / `> install` (mode portable), `> désinstaller` / `> uninstall`, `> quitter` / `> quit` | |
 
-Le système de commandes complet (`> config`, `> help`, mots dans les fichiers de langue) arrive au jalon 7.
+**Règles communes** :
+- **Validation avant écriture**, avec les règles du fichier : une valeur invalide affiche la raison dans la ligne (« doit être entre 1 et 20 ») et rien n'est écrit.
+- **Écriture avec `toml_edit`**, commentaires et mise en forme gardés, puis application immédiate. Les moteurs web sont réécrits en blocs `[[web]]`.
+- **Aperçu en direct** des réglages d'apparence (`theme.opacity`, `theme.mode`, `theme.light`, `theme.dark`) : la ligne sélectionnée s'applique pendant qu'on navigue ; `Entrée` la garde, `Échap` ou une autre saisie revient en arrière.
+- **Raccourci global** : le nouveau est enregistré d'abord ; refusé (déjà pris, Wayland), l'ancien reste et la raison s'affiche.
+- **Lancement au démarrage** : l'entrée du système (registre `Run`, fichier `autostart`) est changée en même temps que le réglage.
+
+**Recherche web** : chaque moteur de `[[web]]` a un mot-clé (par défaut `g` Google, `ddg` DuckDuckGo, `wiki` Wikipédia, `yt` YouTube : `g rust iced`, `yt lofi`) ; `?` cherche avec tous les moteurs (`? rust` ; `?yt lofi` avec un seul) ; sans préfixe, « Rechercher « … » sur le web » (premier moteur de la liste) est toujours proposé en dernier. La requête est encodée en UTF-8 (`été & co` → `%C3%A9t%C3%A9+%26+co`).
+
+**Commandes système** : Windows : `LockWorkStation`, `SetSuspendState`, `ExitWindowsEx` (avec le privilège d'arrêt activé pour éteindre et redémarrer), `SHEmptyRecycleBinW`. Linux : `loginctl lock-session` / `terminate-session`, `systemctl suspend` / `poweroff` / `reboot` (logind, autorisé à l'utilisateur de la session locale active par les règles polkit par défaut), corbeille vidée selon la spécification freedesktop (`~/.local/share/Trash`). Pas de `zbus` ni de crate `trash` : les outils de systemd parlent déjà à logind, et vider la corbeille du dossier personnel tient en quelques lignes.
 
 Une seule instance tourne à la fois : un second `flair` envoie sa commande à l'instance existante (named pipe sous Windows, socket Unix abstraite sous Linux, crate `interprocess`) puis quitte.
 
@@ -304,7 +324,7 @@ Réglages (table générée depuis le registre, `UPDATE_README=1 cargo test -p f
 ## Limitations connues
 
 - **Position** : sous Windows, la fenêtre apparaît sur l'écran sous la souris. Sous Linux, elle reste sur l'écran principal (X11 : à faire ; Wayland : impossible sans layer-shell, jalon 8).
-- **Mots des commandes `>`** : en attendant le jalon 7, les mots français et anglais des quelques commandes existantes sont dans le code (`commands.rs`), pas encore dans les fichiers de langue.
+- **Commandes `>`** : `> thème` (aperçu, création à partir de 3 couleurs) arrive au jalon 8 avec les thèmes personnalisés ; en attendant, `> config theme.mode` / `theme.light` / `theme.dark`. Les valeurs des listes de choix (`dark`, `rad`…) s'écrivent telles quelles, sans traduction.
 - **Progression de mise à jour** : affichée dans la fenêtre ; pas encore dans l'infobulle de l'icône de notification.
 - **Icônes Linux** : seule l'icône vectorielle (`hicolor/scalable`) est installée, pas encore les PNG 16 à 256 px.
 - **Wayland, masquage** : winit ne sait pas cacher une fenêtre sous Wayland. Flair la ferme et en ouvre une nouvelle à l'affichage suivant (12 à 15 ms mesurés). Sans portail XDG (WSLg), le premier affichage attend 100 ms un portail qui ne répond pas (`sctk_adwaita`, imposé par Iced).

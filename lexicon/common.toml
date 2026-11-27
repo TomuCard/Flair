@@ -385,3 +385,16 @@ sense = "unit:GBP"
 [[word]]
 forms = ["¥"]
 sense = "unit:JPY"
+
+# ---------------------------------------------------------------- commands `>`
+# Always available, whatever the input languages: `> help`, `> config` and
+# `> langue` let users re-enable a language they disabled.
+
+[commands]
+help = ["help", "aide", "?"]
+config = ["config", "configuration", "conf"]
+language = ["langue", "langues", "language", "languages"]
+
+[arguments]
+on = ["on", "true", "1"]
+off = ["off", "false", "0"]

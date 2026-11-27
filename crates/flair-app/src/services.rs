@@ -62,6 +62,17 @@ impl Services {
 }
 
 impl Services {
+    /// Registers a new shortcut; on failure the old one stays and the reason
+    /// is returned (never left without a shortcut).
+    pub fn try_hotkey(&mut self, text: &str) -> Result<(), String> {
+        let registration = register_hotkey(text).map_err(|e| e.to_string())?;
+        self._hotkey = Some(registration);
+        self.hotkey_error = None;
+        crate::stats::set_hotkey(text.to_owned());
+        tracing::info!(hotkey = text, "global shortcut changed");
+        Ok(())
+    }
+
     /// Registers a new shortcut. If it fails, the old one is kept.
     pub fn reregister_hotkey(&mut self, text: &str) {
         match register_hotkey(text) {

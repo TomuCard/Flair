@@ -172,6 +172,22 @@ pub struct Lexicon {
     pub meta: Meta,
     #[serde(default, rename = "word")]
     pub words: Vec<Word>,
+    /// Words of Flair's `>` commands: command id → forms
+    /// (`lock = ["verrouiller", "verrouiller la session"]`).
+    #[serde(default)]
+    pub commands: BTreeMap<String, Vec<String>>,
+    /// Words of their arguments: argument id → forms (`on = ["oui",
+    /// "activer"]`).
+    #[serde(default)]
+    pub arguments: BTreeMap<String, Vec<String>>,
+}
+
+/// Command and argument ids: lowercase ASCII letters, digits and `_`.
+fn valid_id(id: &str) -> bool {
+    !id.is_empty()
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -212,6 +228,27 @@ impl Lexicon {
                 .all(|c| c.is_ascii_lowercase() || c == '-' || c == '_');
         if !code_ok {
             return Err(LexiconError::Code(code.clone()));
+        }
+        for (kind, table) in [
+            ("command", &lexicon.commands),
+            ("argument", &lexicon.arguments),
+        ] {
+            for (id, forms) in table {
+                if !valid_id(id) {
+                    return Err(LexiconError::Word {
+                        index: 0,
+                        form: id.clone(),
+                        reason: format!("invalid {kind} id"),
+                    });
+                }
+                if forms.is_empty() || forms.iter().any(|f| f.trim().is_empty()) {
+                    return Err(LexiconError::Word {
+                        index: 0,
+                        form: id.clone(),
+                        reason: format!("empty form for {kind}"),
+                    });
+                }
+            }
         }
         for (index, word) in lexicon.words.iter().enumerate() {
             let fail = |reason: String| LexiconError::Word {

@@ -1,66 +1,36 @@
 //! Result sources implementing [`flair_core::Provider`], and [`Providers`],
 //! which merges them into the list shown by the interface.
 //!
-//! Milestone 4: applications; the calculator follows, files come with
-//! milestone 6, web and system commands with milestone 7.
 
 pub mod apps;
 pub mod calc;
 pub mod files;
+pub mod system;
+pub mod web;
 
 use std::sync::Arc;
 
-use flair_core::result::BuiltinIcon;
-use flair_core::{
-    Action, CancellationToken, IconSource, Provider, ProviderKind, Query, ResultItem,
-};
+use flair_core::{CancellationToken, Provider, ProviderKind, Query, ResultItem};
 
 /// All sources, queried together, ranked and cut to the list size.
 pub struct Providers {
     sources: Vec<Arc<dyn Provider>>,
     max_results: usize,
-    /// Label of the "search the web" row (`{ $query }` already replaced by
-    /// `%s`), shown last; `None` when web search is disabled.
-    web_label: Option<String>,
+    /// Web search, whose "search the web" row is offered last; `None` when
+    /// web search is disabled.
+    web: Option<Arc<web::WebProvider>>,
 }
 
 impl Providers {
     pub fn new(
         sources: Vec<Arc<dyn Provider>>,
         max_results: usize,
-        web_label: Option<String>,
+        web: Option<Arc<web::WebProvider>>,
     ) -> Self {
         Self {
             sources,
             max_results: max_results.max(1),
-            web_label,
-        }
-    }
-
-    /// Web search row: always offered last, until the web provider of
-    /// milestone 7 (configurable engines and keywords).
-    fn web(&self, label: &str, text: &str) -> ResultItem {
-        let encoded: String = text
-            .bytes()
-            .map(|b| match b {
-                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                    (b as char).to_string()
-                }
-                b' ' => "+".into(),
-                _ => format!("%{b:02X}"),
-            })
-            .collect();
-        ResultItem {
-            id: "web:default".into(),
-            title: label.replace("%s", text),
-            subtitle: None,
-            icon: IconSource::Builtin(BuiltinIcon::Web),
-            score: f32::MIN,
-            match_indices: vec![],
-            actions: vec![Action::OpenUrl {
-                url: format!("https://duckduckgo.com/?q={encoded}"),
-            }],
-            provider: ProviderKind::Web,
+            web,
         }
     }
 }
@@ -84,22 +54,25 @@ impl Provider for Providers {
                 out.extend(source.query(q, cancel));
             }
         }
+        if let Some(web) = &self.web {
+            out.extend(web.query(q, cancel));
+        }
         out.sort_by(|a, b| b.score.total_cmp(&a.score));
-        let web = self
-            .web_label
-            .as_deref()
-            .filter(|_| q.accepts(ProviderKind::Web));
+        // The fallback row, unless the web is already offered (`?`, keyword).
+        let fallback = self
+            .web
+            .as_ref()
+            .filter(|_| q.filter.is_none() && !out.iter().any(|r| r.provider == ProviderKind::Web))
+            .and_then(|w| w.fallback(&q.text));
         out.truncate(
-            if web.is_some() {
+            if fallback.is_some() {
                 self.max_results - 1
             } else {
                 self.max_results
             }
             .max(1),
         );
-        if let Some(label) = web {
-            out.push(self.web(label, &q.text));
-        }
+        out.extend(fallback);
         out
     }
 
@@ -113,6 +86,8 @@ impl Provider for Providers {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use flair_core::result::BuiltinIcon;
+    use flair_core::{Action, IconSource};
 
     struct Fixed(Vec<f32>);
 
@@ -145,7 +120,17 @@ mod tests {
                 Arc::new(Fixed(vec![2.0, 0.5])),
             ],
             max,
-            Some("Search the web for “%s”".into()),
+            Some(Arc::new(web::WebProvider::new(
+                vec![web::Engine {
+                    keyword: "ddg".into(),
+                    name: "DuckDuckGo".into(),
+                    url: "https://duckduckgo.com/?q={query}".into(),
+                }],
+                web::Texts {
+                    search_with: "Search “%q” with %e".into(),
+                    search_web: "Search the web for “%q”".into(),
+                },
+            ))),
         )
     }
 

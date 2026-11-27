@@ -16,6 +16,8 @@ use flair_providers::apps::{AppsProvider, Texts};
 use flair_providers::calc::currency::{Rates, SharedRates};
 use flair_providers::calc::{self, CalcProvider, Calculator};
 use flair_providers::files::{self, FilesProvider};
+use flair_providers::system::{self, SystemProvider};
+use flair_providers::web::{self, Engine, WebProvider};
 
 #[derive(Clone)]
 pub struct Sources {
@@ -216,14 +218,53 @@ impl Sources {
         if config.files.enabled {
             sources.push(Arc::new(self.files.clone()));
         }
-        Arc::new(Providers::new(
-            sources,
-            config.max_results as usize,
-            config
-                .providers
-                .web
-                .then(|| i18n.t_args("web-search", &[("query", "%s")])),
-        ))
+        if config.providers.system {
+            sources.push(Arc::new(SystemProvider::new(
+                self.system_entries(i18n, config),
+            )));
+        }
+        let web = config.providers.web.then(|| {
+            Arc::new(WebProvider::new(
+                config
+                    .web
+                    .iter()
+                    .map(|e| Engine {
+                        keyword: e.keyword.clone(),
+                        name: e.name.clone(),
+                        url: e.url.clone(),
+                    })
+                    .collect(),
+                web::Texts {
+                    search_with: i18n
+                        .t_args("web-search-with", &[("query", "%q"), ("engine", "%e")]),
+                    search_web: i18n.t_args("web-search", &[("query", "%q")]),
+                },
+            ))
+        });
+        Arc::new(Providers::new(sources, config.max_results as usize, web))
+    }
+
+    /// System commands found without `>`, with the words of the active
+    /// languages.
+    fn system_entries(&self, i18n: &I18n, config: &Config) -> Vec<system::Entry> {
+        let words = crate::commands::words(config, &self.lexicon_dir, i18n.lang());
+        crate::commands::CATALOG
+            .iter()
+            .filter_map(|c| match c.run {
+                crate::commands::Run::System(command) => Some(system::Entry {
+                    command,
+                    title: i18n.t(&format!("cmd-{}", c.id)),
+                    subtitle: i18n.t("kind-system"),
+                    words: words
+                        .all_forms(c.id)
+                        .iter()
+                        .map(|w| (*w).to_owned())
+                        .collect(),
+                }),
+                _ => None,
+            })
+            .filter(|e| !e.words.is_empty())
+            .collect()
     }
 
     /// Configuration reloaded: new language and settings, language files and
