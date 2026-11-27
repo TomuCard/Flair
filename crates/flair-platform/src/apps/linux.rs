@@ -247,7 +247,7 @@ pub fn load_icon(icon: &AppIcon, size: u32) -> Option<IconRgba> {
     load_file(&path, size)
 }
 
-fn find_themed(name: &str, size: u32) -> Option<PathBuf> {
+pub(crate) fn find_themed(name: &str, size: u32) -> Option<PathBuf> {
     // Some entries give a file name instead of an icon name.
     let name = name
         .strip_suffix(".png")
@@ -268,7 +268,7 @@ fn find_themed(name: &str, size: u32) -> Option<PathBuf> {
         })
 }
 
-fn load_file(path: &Path, size: u32) -> Option<IconRgba> {
+pub(crate) fn load_file(path: &Path, size: u32) -> Option<IconRgba> {
     let data = std::fs::read(path).ok()?;
     match path.extension()?.to_str()? {
         "svg" => image::render_svg(&data, size),

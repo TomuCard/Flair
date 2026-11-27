@@ -10,6 +10,7 @@ repository.workspace = true
 flair-core.workspace = true
 directories.workspace = true
 interprocess.workspace = true
+memmap2 = "0.9.12"
 png.workspace = true
 resvg.workspace = true
 thiserror.workspace = true
@@ -30,6 +31,7 @@ windows = { version = "0.62.2", features = [
     "Win32_Graphics_Gdi",
     "Win32_Storage_FileSystem",
     "Win32_System_Console",
+    "Win32_System_Power",
     "Win32_System_ProcessStatus",
     "Win32_System_Registry",
     "Win32_System_Threading",
@@ -51,6 +53,7 @@ workspace = true
 # through tray-icon, which forces the async-io stack whose `blocking` pool
 # keeps a thread waking up every 500 ms forever (see `tray/linux.rs`).
 freedesktop-icons = "0.4.0"
+libc = "0.2.191"
 ksni.workspace = true
 rfd.workspace = true
 tokio.workspace = true

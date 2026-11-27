@@ -11,13 +11,18 @@ pub mod console;
 #[cfg(target_os = "linux")]
 mod dbus;
 pub mod dialog;
+pub mod file_icon;
+pub mod fs;
 pub mod hotkey;
 pub mod image;
 pub mod install;
 pub mod ipc;
 pub mod memory;
+pub mod mmap;
 pub mod open;
 pub mod paths;
+pub mod power;
+pub mod priority;
 pub mod process;
 pub mod renderer;
 pub mod theme;

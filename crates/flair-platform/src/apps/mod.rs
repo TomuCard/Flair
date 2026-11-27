@@ -14,7 +14,7 @@ use crate::image::IconRgba;
 #[cfg(target_os = "linux")]
 pub mod desktop_entry;
 #[cfg(target_os = "linux")]
-mod linux;
+pub(crate) mod linux;
 #[cfg(windows)]
 mod windows;
 

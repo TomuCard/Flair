@@ -15,11 +15,13 @@ use flair_providers::Providers;
 use flair_providers::apps::{AppsProvider, Texts};
 use flair_providers::calc::currency::{Rates, SharedRates};
 use flair_providers::calc::{self, CalcProvider, Calculator};
+use flair_providers::files::{self, FilesProvider};
 
 #[derive(Clone)]
 pub struct Sources {
     pub apps: AppsProvider,
     pub calc: Arc<CalcProvider>,
+    pub files: FilesProvider,
     pub frecency: Arc<Mutex<Frecency>>,
     pub history: Arc<Mutex<History>>,
     rates: SharedRates,
@@ -86,6 +88,24 @@ fn refresh_rates(rates: &SharedRates, file: &std::path::Path) {
     }
 }
 
+fn home() -> Option<std::path::PathBuf> {
+    directories::BaseDirs::new().map(|b| b.home_dir().to_owned())
+}
+
+/// The files settings of a configuration.
+fn files_settings(config: &Config) -> files::Settings {
+    let f = &config.files;
+    files::Settings::new(
+        f.enabled,
+        &f.roots,
+        &f.exclude,
+        f.include_hidden,
+        f.other_drives,
+        config.resources.pause_on_battery,
+        home().as_deref(),
+    )
+}
+
 fn texts(i18n: &I18n) -> Texts {
     Texts {
         lang: match i18n.lang() {
@@ -146,6 +166,14 @@ impl Sources {
             // before the first query.
             apps.scan_blocking();
         }
+        let files = FilesProvider::new(
+            paths.data_dir.join("index"),
+            home(),
+            Arc::clone(&frecency),
+            files_settings(config),
+        );
+        files.start(watch);
+        crate::stats::set_files(files.clone());
         let lexicon_dir = paths.lexicon_dir();
         let history = Arc::new(Mutex::new(History::load(
             &paths.data_dir.join("history.json"),
@@ -166,6 +194,7 @@ impl Sources {
         Self {
             apps,
             calc,
+            files,
             frecency,
             history,
             rates,
@@ -184,6 +213,9 @@ impl Sources {
         if config.providers.apps {
             sources.push(Arc::new(self.apps.clone()));
         }
+        if config.files.enabled {
+            sources.push(Arc::new(self.files.clone()));
+        }
         Arc::new(Providers::new(
             sources,
             config.max_results as usize,
@@ -198,6 +230,7 @@ impl Sources {
     /// launch history maybe imported.
     pub fn reload(&self, config: &Config, i18n: &I18n) {
         self.apps.set_texts(texts(i18n));
+        self.files.reconfigure(files_settings(config));
         if config.calc.currency {
             refresh_rates(&self.rates, &self.rates_file);
         }

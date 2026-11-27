@@ -440,6 +440,7 @@ impl Flair {
             TrayAction::Reindex => {
                 if let Some(sources) = &self.sources {
                     sources.apps.refresh();
+                    sources.files.reindex();
                 }
                 Task::none()
             }
@@ -482,6 +483,9 @@ impl Flair {
         }
         self.visible = true;
         crate::stats::set_visible(true);
+        if let Some(sources) = &self.sources {
+            sources.files.on_show();
+        }
         self.show_requested = Some(Instant::now());
         self.was_focused = false;
         let auto_check = self.maybe_auto_check();
@@ -701,7 +705,7 @@ impl Flair {
             return Task::none();
         };
         let text = match (item.provider, item.primary_action()) {
-            (ProviderKind::File, _) => item.copy_text(),
+            (ProviderKind::File, _) => file_completion(&item.copy_text(), &self.input),
             // Commands keep their `>` prefix: `> ver` + Tab gives `> version`.
             (_, Some(Action::Internal { command })) => {
                 match crate::commands::completion(command, self.i18n.lang()) {
@@ -767,7 +771,9 @@ impl Flair {
                 self.hide()
             }
             Action::RevealInFolder { path } => {
-                open(path.parent().unwrap_or(&path));
+                if let Err(e) = flair_platform::open::reveal_path(&path) {
+                    tracing::error!(path = %path.display(), "cannot show in its folder: {e}");
+                }
                 self.hide()
             }
             Action::OpenUrl { url } => {
@@ -955,6 +961,26 @@ fn launch(target: flair_core::LaunchTarget, elevated: bool) {
 }
 
 /// Opens a file, folder or URL with the default application; errors are logged.
+/// `Tab` on a file: its path, with `~` kept when typed, and a separator after
+/// a folder so that the next `Tab` goes inside.
+fn file_completion(path: &str, typed: &str) -> String {
+    let mut text = path.to_owned();
+    if typed.trim_start().starts_with('~')
+        && let Some(home) = directories::BaseDirs::new().map(|b| b.home_dir().to_owned())
+        && let Ok(rest) = std::path::Path::new(path).strip_prefix(&home)
+    {
+        text = if rest.as_os_str().is_empty() {
+            "~".into()
+        } else {
+            format!("~{}{}", std::path::MAIN_SEPARATOR, rest.display())
+        };
+    }
+    if std::path::Path::new(path).is_dir() && !text.ends_with(['/', '\\']) {
+        text.push(std::path::MAIN_SEPARATOR);
+    }
+    text
+}
+
 fn open(path: &std::path::Path) {
     if let Err(e) = flair_platform::open::open_path(path) {
         tracing::error!(path = %path.display(), "cannot open: {e}");

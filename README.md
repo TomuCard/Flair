@@ -6,7 +6,7 @@ Launcher clavier façon Spotlight / Raycast / PowerToys Run, en Rust, pour **Win
 |---|---|---|
 | ![](docs/screenshots/dark-en-apps.png) | ![](docs/screenshots/dark-en-calc.png) | ![](docs/screenshots/light-fr-apps.png) |
 
-> **État : jalon 5 (calculs avancés).** Flair est résident (icône de notification, raccourci global, instance unique, aucun réveil fenêtre cachée), s'installe lui-même, se met à jour par `> mise à jour` avec des versions signées publiées à chaque push sur `main`, et sauvegarde tout dans un fichier `.flair`. Il trouve et lance les **applications installées** (Windows et Linux, avec leurs icônes), classées par `nucleo-matcher` et par la frecency, et **calcule** en français et en anglais à la fois (nombres, fonctions, unités, octets, durées, heures, dates, fuseaux horaires, horodatages Unix, bases, opérations bit à bit, temps de transfert, devises). Les fichiers arrivent au jalon 6, le web et les commandes système au jalon 7. Le cahier des charges complet est dans [`PROMPT.md`](PROMPT.md).
+> **État : jalon 6 (fichiers).** Flair est résident (icône de notification, raccourci global, instance unique, aucun réveil fenêtre cachée), s'installe lui-même, se met à jour par `> mise à jour` avec des versions signées publiées à chaque push sur `main`, et sauvegarde tout dans un fichier `.flair`. Il trouve et lance les **applications installées** (Windows et Linux, avec leurs icônes), classées par `nucleo-matcher` et par la frecency, et **calcule** en français et en anglais à la fois (nombres, fonctions, unités, octets, durées, heures, dates, fuseaux horaires, horodatages Unix, bases, opérations bit à bit, temps de transfert, devises), et **cherche les fichiers** dans un index compact ouvert depuis le disque, tenu à jour en direct. Le web et les commandes système arrivent au jalon 7. Le cahier des charges complet est dans [`PROMPT.md`](PROMPT.md).
 
 ## Applications
 
@@ -14,6 +14,22 @@ Launcher clavier façon Spotlight / Raycast / PowerToys Run, en Rust, pour **Win
 - **Linux** : fichiers `.desktop` de `$XDG_DATA_HOME`, `$XDG_DATA_DIRS`, Flatpak et Snap, en respectant `NoDisplay`, `Hidden`, `OnlyShowIn`/`NotShowIn` et `TryExec`. `Name`, `Name[fr]`, `GenericName` et `Keywords` dans les deux langues sont indexés : `Fichiers` et `Files` trouvent tous les deux le gestionnaire de fichiers. Codes de `Exec` (`%f`, `%U`, `%i`, `%c`, `%k`…) et `Terminal=true` gérés. Icônes du thème courant (`freedesktop-icons`), PNG et SVG.
 - **Mise à jour à chaud** : les dossiers sources sont surveillés (`notify`) ; un changement relance l'indexation après 2 s de calme. « Réindexer » dans l'icône de notification force un nouveau parcours.
 - **Classement** : `nucleo-matcher` (accents et casse ignorés), bonus si la requête est le début du nom, d'un mot ou des initiales (`vsc` → **V**isual **S**tudio **C**ode), applications avant fichiers à score égal, et **frecency** : chaque lancement est enregistré dans `frecency.json` (nombre et date du dernier usage, inclus dans les exports `.flair`), et ce qui est lancé souvent et récemment remonte. Les correspondances trop dispersées (`calc` dans « Lo**c**al Security Poli**c**y ») sont écartées.
+
+## Fichiers
+
+On tape une partie du nom (`rapport`, `facture 2025`, `ete mer` pour `été à la mer.jpg`) : les fichiers et dossiers de l'index s'affichent avec leur dossier en sous-titre (`~/Documents/Projets`). `Entrée` ouvre avec l'application par défaut, `Ctrl+Entrée` ouvre le dossier qui le contient avec le fichier sélectionné (Explorateur ; sous Linux, le gestionnaire de fichiers via `org.freedesktop.FileManager1`, sinon le dossier), `Ctrl+C` copie le chemin.
+
+- **Recherche** : tous les mots tapés doivent être dans le nom, dans n'importe quel ordre, sans tenir compte de la casse ni des accents. Le nom exact passe en premier (avec ou sans extension : `rapport` → `rapport.pdf`), puis les noms qui commencent par la requête, puis ceux où elle commence un mot ; les dossiers avant les fichiers, les chemins courts avant les profonds, et la frecency fait remonter ce qu'on ouvre souvent. Mesuré : 2 à 6 ms sur 150 000 à 250 000 entrées (profil Windows réel, `/usr` + dossier personnel sous Linux), 12 à 19 ms sur un index synthétique d'un million d'entrées (moitié de noms accentués), sur 4 threads au-delà de 200 000 entrées.
+- **Chemins** : `~/Doc`, `/etc/`, `C:\Us`, `D:` listent le dossier directement (pas l'index), dossiers d'abord, filtrés par le début du nom ; `Tab` complète (avec `/` ou `\` après un dossier, pour continuer dedans, et `~` gardé s'il a été tapé). Les fichiers cachés ne s'affichent que si on tape `.`.
+- **Index compact** (`flair-providers/src/files/index.rs`) : tous les noms dans un seul tampon d'octets, chaque entrée en 12 octets (parent, début et longueur du nom, drapeaux), jamais un `String` ou un `PathBuf` par fichier ; les chemins sont reconstruits pour les seuls résultats affichés. Sauvegardé avec `rkyv` dans `index/files-<date>.idx` (dossier des données) et **ouvert par `memmap2`, sans copie** : le système ne charge que les pages lues par une recherche, et la validation `rkyv` à chaque ouverture coûte quelques microsecondes. Environ 27 octets par entrée sur disque (4,9 Mo pour 146 000 fichiers). Chaque scan écrit un nouveau fichier et supprime l'ancien : un fichier mappé ne peut pas être remplacé sous Windows.
+- **Démarrage** : l'index sauvegardé sert immédiatement, puis un scan complet rattrape en arrière-plan ce qui a changé pendant que Flair ne tournait pas.
+- **Scan** : parcours parallèle maison (la moitié des cœurs), qui construit directement l'index compact, chaque thread en **priorité arrière-plan** pour le CPU et le disque (`THREAD_MODE_BACKGROUND_BEGIN` sous Windows ; `nice 19` et `ioprio` classe *idle* sous Linux). Mesuré : 146 000 entrées en 0,6 s (profil Windows), 246 000 en 1 s (Linux). Les liens symboliques sont indexés mais jamais suivis ; les noms qui ne sont pas de l'Unicode valide sont ignorés.
+- **Exclusions** : `files.exclude` (par défaut `node_modules`, `.git`, `target`, `.cache`, `__pycache__`) accepte un nom (`node_modules`, `*.tmp`), une fin de chemin (`build/out`) ou un chemin absolu (`/proc`), avec `*`, sans tenir compte de la casse. S'y ajoutent les dossiers bruyants : `AppData\Local`, `AppData\LocalLow`, `AppData\Roaming\*\Cache`, `$Recycle.Bin`, `System Volume Information` sous Windows ; `/proc`, `/sys`, `/dev`, `/run`, `/tmp`, `~/.local/share/Trash` sous Linux ; les caches de navigateur (`cache2`, `GPUCache`, `Code Cache`). Fichiers cachés exclus par défaut (`files.include_hidden`), et sous Windows ceux qui ont l'attribut caché ou système.
+- **Racines** : `files.roots` (par défaut `["~"]`, qui contient Bureau, Documents, Téléchargements et Images) ; `files.other_drives = true` ajoute les autres disques fixes sous Windows (`D:\`, `E:\`…). Une racine contenue dans une autre n'est parcourue qu'une fois.
+- **Mise à jour en direct** : `notify` avec `notify-debouncer-full` (événements regroupés après 1,5 s de calme, sans le cache d'identifiants de fichiers qui reparcourrait tout l'arbre sous Windows). Les changements vont dans un petit index en mémoire (entrées supprimées, chemins ajoutés, nouveaux dossiers parcourus avec leur contenu) ; au-delà de 20 000 changements ou de 5 000 chemins d'un coup, un nouveau scan réécrit l'index. Mesuré : 200 fichiers écrits d'un coup = 2 réveils. Sous Windows, une surveillance récursive par racine. Sous Linux, inotify demande une surveillance par dossier : seuls les dossiers indexés sont surveillés (pas les `node_modules` exclus), dans la limite de la moitié de `fs.inotify.max_user_watches` ; au-delà, un message dans les logs, et les dossiers non surveillés sont rescannés quand la fenêtre s'affiche, au plus tous les quarts d'heure (pas de minuterie fenêtre cachée).
+- **Mode batterie** (`resources.pause_on_battery`, activé par défaut) : sur batterie, les changements sont mis de côté et les scans reportés ; tout est rattrapé à l'affichage suivant sur secteur. La recherche marche avec l'index existant. « Réindexer » (icône de notification) force un scan même sur batterie. L'état de l'alimentation est lu quand quelque chose arrive (changement de fichier, affichage), jamais en boucle.
+- **Icônes** : celles du système, par type de fichier (icône shell sous Windows, icône du type MIME dans le thème sous Linux, d'après `shared-mime-info`), chargées en arrière-plan et gardées en cache ; l'icône intégrée de Flair s'affiche en attendant, la vraie à la frappe suivante.
+- **Statistiques** (`flair --stats`) : taille de l'index (fichier / mémoire hors fichier), nombre d'entrées, dossiers surveillés ; les rafales de changements de fichiers comptent dans les réveils.
 
 ## Calculatrice
 
@@ -129,7 +145,7 @@ Une seule instance tourne à la fois : un second `flair` envoie sa commande à l
 
 Si le raccourci est déjà pris par une autre application, Flair démarre quand même et l'explique dans sa fenêtre (`Entrée` ouvre la configuration).
 
-**Icône de notification** : Afficher, Réindexer (applications ; les fichiers au jalon 6), Ouvrir la configuration, Rechercher une mise à jour (jalon 3), Lancer au démarrage, Statistiques, Quitter. Un clic gauche affiche ou cache la fenêtre. L'icône est le logo rendu à l'exécution (`resvg`) dans la couleur de la barre des tâches (`SystemUsesLightTheme` sous Windows).
+**Icône de notification** : Afficher, Réindexer (applications et fichiers), Ouvrir la configuration, Rechercher une mise à jour (jalon 3), Lancer au démarrage, Statistiques, Quitter. Un clic gauche affiche ou cache la fenêtre. L'icône est le logo rendu à l'exécution (`resvg`) dans la couleur de la barre des tâches (`SystemUsesLightTheme` sous Windows).
 - Windows : `tray-icon` ;
 - Linux : StatusNotifierItem via `ksni` sur un runtime Tokio d'un seul thread. Le backend KSNI de `tray-icon` impose la pile `async-io`, dont le pool `blocking` garde un thread qui se réveille toutes les 500 ms pour toujours : rejeté pour la même raison que ci-dessus. Sous GNOME, l'icône demande l'extension « AppIndicator ».
 
@@ -185,7 +201,8 @@ Mesuré sous WSLg (Wayland et X11 via XWayland, rendu logiciel), build release :
 | Affichage de la fenêtre (raccourci → première image) | X11 : 2,6 à 4,4 ms (fenêtre gardée chaude) ; Wayland : 12 à 15 ms (fenêtre recréée) | < 50 ms |
 | Premier affichage au lancement (démarrage du processus compris) | 17 à 20 ms | — |
 | RAM fenêtre cachée, sans index | 24 Mo | < 40 Mo |
-| Réveils en 30 s fenêtre cachée (compteur interne) | 0 | 0 |
+| Réveils en 30 s fenêtre cachée (compteur interne) | 0, index de fichiers et surveillance actifs | 0 |
+| 200 fichiers écrits d'un coup dans un dossier surveillé | 2 réveils | une poignée |
 | Changements de contexte en 30 s, tous threads confondus | 0 | 0 |
 | Temps CPU consommé en 30 s fenêtre cachée | 0 | 0 |
 
@@ -210,7 +227,7 @@ La CI (GitHub Actions, `.github/workflows/ci.yml`) lance `fmt`, `clippy` et `tes
 ```
 crates/
 ├── flair-core/       types, trait Provider, registre des réglages, config, thèmes, i18n (sans UI)
-├── flair-providers/  sources de résultats : applications, calculatrice (fichiers, web, système à venir)
+├── flair-providers/  sources de résultats : applications, calculatrice, fichiers (web, système à venir)
 ├── flair-platform/   code propre à l'OS : chemins, raccourci global, icône de notification, IPC,
 │                     démarrage auto, mémoire, écran sous la souris (seul crate avec `unsafe`)
 └── flair-app/        binaire `flair` : interface Iced, logs, lancement
@@ -299,6 +316,7 @@ Réglages (table générée depuis le registre, `UPDATE_README=1 cargo test -p f
 - **Nouvelles applications du Store** : les raccourcis sont surveillés, pas le dossier `shell:AppsFolder`. Une application du Store installée pendant que Flair tourne apparaît après « Réindexer » ou au prochain démarrage.
 - **Calculatrice** : pas de cryptomonnaies (`1 btc en €`) ; les heures de la journée sont reconnues dans un calcul (`23h + 3h`), pas seules ; un `14h30` sans opération reste une durée. Les dates sans année (`25 décembre`, `noël`) prennent la prochaine occurrence, et la dernière avec « depuis ». Un mois seul (`Mars 2020`) n'est pas lu comme une date, sauf après « depuis », « jusqu'à » ou « quel jour ». `1 an en jours` donne l'année moyenne de fend (365,24 jours).
 - **Icônes Linux** : les icônes XPM (anciennes applications) ne sont pas lues ; l'icône générique les remplace.
+- **Fichiers** : pas encore de lecture de la MFT / du journal USN NTFS (indexation façon *Everything*) ; l'architecture le permet (un autre producteur pour le même index). Sous Linux, `other_drives` ne fait rien : les disques montés sont des dossiers de l'arbre, à ajouter dans `files.roots`. La recherche porte sur le nom, pas sur le chemin complet (`projets rapport` ne trouve pas `Projets/rapport.md`). Une icône de type qui arrive ne met pas à jour la liste déjà affichée.
 
 ## Développement
 

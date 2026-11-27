@@ -248,6 +248,18 @@ pub fn fold(text: &str) -> String {
     text.chars().flat_map(fold_char).collect()
 }
 
+/// [`fold`] into a reused buffer (hot loops: no allocation per text).
+pub fn fold_into(text: &str, out: &mut String) {
+    out.clear();
+    for c in text.chars() {
+        if c.is_ascii() {
+            out.push(c.to_ascii_lowercase());
+        } else {
+            out.extend(fold_char(c));
+        }
+    }
+}
+
 fn fold_char(c: char) -> impl Iterator<Item = char> {
     let base = match c {
         'à' | 'á' | 'â' | 'ä' | 'ã' | 'å' | 'À' | 'Á' | 'Â' | 'Ä' | 'Ã' | 'Å' => 'a',

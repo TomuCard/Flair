@@ -6,6 +6,7 @@
 
 pub mod apps;
 pub mod calc;
+pub mod files;
 
 use std::sync::Arc;
 
