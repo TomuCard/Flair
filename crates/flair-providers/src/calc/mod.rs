@@ -32,8 +32,13 @@ use format::{Shown, Style};
 use normalize::{RenderOptions, Rendered, Vocabulary};
 use token::DecimalMode;
 
+/// Unoptimized builds (tests, CI) run the evaluator many times slower: the
+/// budgets are stretched so that a slow runner does not drop results.
+const SLOWDOWN: u32 = if cfg!(debug_assertions) { 10 } else { 1 };
 /// Time allowed for all the readings of one input.
-pub const BUDGET: Duration = Duration::from_millis(50);
+pub const BUDGET: Duration = Duration::from_millis(50 * SLOWDOWN as u64);
+/// Time allowed to check whether an unknown word is a unit.
+const UNIT_BUDGET: Duration = Duration::from_millis(20 * SLOWDOWN as u64);
 /// Readings shown as variants besides the best one.
 const MAX_OTHER_READINGS: usize = 2;
 
@@ -437,7 +442,7 @@ impl Calculator {
         }
         let known = eval::fend(
             &format!("1 {word}"),
-            &Env::new(Deadline::after(Duration::from_millis(20))),
+            &Env::new(Deadline::after(UNIT_BUDGET)),
         )
         .is_ok_and(|(text, _)| text.chars().any(char::is_alphabetic) && !text.ends_with('i'));
         if let Ok(mut cache) = self.units.lock() {
