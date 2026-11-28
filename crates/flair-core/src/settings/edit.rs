@@ -42,11 +42,26 @@ fn to_edit_value(value: &toml::Value) -> Option<Value> {
 pub fn set_in_text(text: &str, key: &str, value: &toml::Value) -> Result<String, EditError> {
     let desc = registry::find(key).ok_or_else(|| EditError::UnknownKey(key.to_owned()))?;
     desc.validate(value)?;
-    let new_value = to_edit_value(value).ok_or_else(|| EditError::UnknownKey(key.to_owned()))?;
-
     let mut doc: DocumentMut = text
         .parse()
         .map_err(|e: toml_edit::TomlError| EditError::Syntax(e.to_string()))?;
+    // `[[web]]` blocks: an array of tables, rewritten whole.
+    if desc.kind == registry::SettingKind::WebEngines {
+        let mut blocks = toml_edit::ArrayOfTables::new();
+        for item in value.as_array().into_iter().flatten() {
+            let mut table = Table::new();
+            for (k, v) in item.as_table().into_iter().flatten() {
+                if let Some(v) = to_edit_value(v) {
+                    table.insert(k, Item::Value(v));
+                }
+            }
+            blocks.push(table);
+        }
+        doc.insert(key, Item::ArrayOfTables(blocks));
+        return Ok(doc.to_string());
+    }
+    let new_value = to_edit_value(value).ok_or_else(|| EditError::UnknownKey(key.to_owned()))?;
+
     let table: &mut Table = match desc.section() {
         None => doc.as_table_mut(),
         Some(section) => {
@@ -136,6 +151,22 @@ mod tests {
             set_in_text("x = = 1", "autostart", &toml::Value::Boolean(true)),
             Err(EditError::Syntax(_))
         ));
+    }
+
+    #[test]
+    fn rewrites_web_engines() {
+        let text = "# mine\nmax_results = 8\n\n[[web]]\nkeyword = \"g\"\nname = \"Google\"\nurl = \"https://g/?q={query}\"\n";
+        let engines: toml::Value = toml::from_str::<toml::Table>(
+            "web = [{keyword = \"g\", name = \"Google\", url = \"https://g/?q={query}\"}, {keyword = \"yt\", name = \"YouTube\", url = \"https://yt/?q={query}\"}]",
+        )
+        .expect("toml")
+        .remove("web")
+        .expect("web");
+        let updated = set_in_text(text, "web", &engines).expect("ok");
+        assert!(updated.starts_with("# mine\nmax_results = 8"));
+        let config = parse_config(&updated).config;
+        assert_eq!(config.web.len(), 2);
+        assert_eq!(config.web[1].keyword, "yt");
     }
 
     #[test]

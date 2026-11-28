@@ -138,6 +138,13 @@ sense = "unit:year"
 when = { after = "number" }
 priority = 10
 
+# `années depuis 1999`.
+[[word]]
+forms = ["an", "ans", "année", "années"]
+sense = "unit:year"
+when = { before = ["sense:until", "sense:since"] }
+priority = 10
+
 [[word]]
 forms = ["mois"]
 sense = "unit:month"
@@ -185,7 +192,7 @@ forms = ["pouce", "pouces"]
 sense = "unit:inch"
 
 [[word]]
-forms = ["année-lumière", "années-lumière", "al"]
+forms = ["année-lumière", "années-lumière", "an-lumière", "ans-lumière", "al"]
 sense = "unit:light_year"
 
 [[word]]
@@ -259,6 +266,48 @@ sense = "func:gcd"
 [[word]]
 forms = ["ppcm"]
 sense = "func:lcm"
+
+# `combien font 2 + 2`, `est-ce que 17 est premier`.
+[[word]]
+forms = ["combien font", "combien fait", "combien vaut", "combien valent", "combien égale", "quel est", "quelle est", "que vaut", "calcule", "calculer", "est-ce que"]
+sense = "ignore"
+when = { position = "start" }
+
+# `la moitié de 50`, `le double de 21`.
+[[word]]
+forms = ["moitié de", "la moitié de", "demi de"]
+sense = "fend:0.5 *"
+
+[[word]]
+forms = ["double de", "le double de"]
+sense = "fend:2 *"
+
+[[word]]
+forms = ["triple de", "le triple de"]
+sense = "fend:3 *"
+
+[[word]]
+forms = ["tiers de", "un tiers de", "le tiers de"]
+sense = "fend:(1/3) *"
+
+[[word]]
+forms = ["quart de", "un quart de", "le quart de"]
+sense = "fend:(1/4) *"
+
+[[word]]
+forms = ["vitesse de la lumière"]
+sense = "const:c"
+
+# `20 m²`, `pieds carrés`, `mètres cubes`.
+[[word]]
+forms = ["carré", "carrés", "carrée", "carrées"]
+sense = "fend:^2"
+when = { after = "unit" }
+
+[[word]]
+forms = ["cube", "cubes"]
+sense = "fend:^3"
+when = { after = "unit" }
 
 [[word]]
 forms = ["premier", "est premier"]
@@ -343,12 +392,102 @@ forms = ["depuis le", "depuis"]
 sense = "since"
 
 [[word]]
+forms = ["quel jour sommes-nous", "quel jour on est", "quel jour est-on", "on est quel jour", "quelle date", "quelle est la date", "date du jour", "date d'aujourd'hui"]
+sense = "today"
+
+[[word]]
+forms = ["quelle heure", "quelle heure est-il", "il est quelle heure"]
+sense = "now"
+
+[[word]]
 forms = ["quel jour", "quel jour était le", "quel jour sera le", "quel jour le", "quel jour tombe le"]
 sense = "what_day"
 
 [[word]]
-forms = ["heure à", "l'heure à", "quelle heure à", "heure a", "quelle heure est-il à"]
+forms = ["heure à", "l'heure à", "quelle heure à", "heure a", "quelle heure est-il à", "heure au", "l'heure au", "quelle heure au", "quelle heure est-il au", "heure aux", "l'heure aux", "quelle heure est-il aux"]
 sense = "time_in"
+
+# `demain à 14h`, `15h à Tokyo`, `de 9h à 17h30`.
+[[word]]
+forms = ["à", "a"]
+sense = "at"
+when = { before = ["time", "word"] }
+priority = 20
+
+[[word]]
+forms = ["de"]
+sense = "from"
+when = { position = "start", before = "time" }
+
+# `temps jusqu'à 18h`.
+[[word]]
+forms = ["temps", "combien de temps", "combien de jours"]
+sense = "ignore"
+when = { before = ["sense:until", "sense:since"] }
+
+[[word]]
+forms = ["midi"]
+sense = "noon"
+
+[[word]]
+forms = ["minuit"]
+sense = "midnight"
+
+# `lundi prochain`, `vendredi dernier`.
+[[word]]
+forms = ["prochain", "prochaine"]
+sense = "next"
+
+[[word]]
+forms = ["dernier", "dernière"]
+sense = "last"
+
+# `3 jours plus tard`.
+[[word]]
+forms = ["plus tard"]
+sense = "from_now"
+when = { position = "end", after = "duration" }
+
+[[word]]
+forms = ["âge", "âge depuis", "age"]
+sense = "age"
+
+# Fêtes (sans année : la prochaine, ou la dernière après `depuis`).
+[[word]]
+forms = ["noël", "jour de noël"]
+sense = "holiday:12-25"
+
+[[word]]
+forms = ["veille de noël", "réveillon de noël"]
+sense = "holiday:12-24"
+
+[[word]]
+forms = ["nouvel an", "jour de l'an", "premier de l'an"]
+sense = "holiday:01-01"
+
+[[word]]
+forms = ["saint-sylvestre", "la saint-sylvestre", "saint sylvestre", "réveillon du nouvel an"]
+sense = "holiday:12-31"
+
+[[word]]
+forms = ["saint-valentin", "la saint-valentin", "saint valentin", "la saint valentin"]
+sense = "holiday:02-14"
+
+[[word]]
+forms = ["toussaint", "la toussaint"]
+sense = "holiday:11-01"
+
+[[word]]
+forms = ["fête nationale", "la fête nationale"]
+sense = "holiday:07-14"
+
+[[word]]
+forms = ["fête du travail", "la fête du travail"]
+sense = "holiday:05-01"
+
+[[word]]
+forms = ["pâques"]
+sense = "holiday:easter"
 
 # `4 Go à 100 Mbit/s`: `a` sans accent seulement entre une quantité et un débit.
 [[word]]
@@ -439,7 +578,75 @@ sense = "weekday:6"
 forms = ["dimanche"]
 sense = "weekday:7"
 
-# Villes dont le nom français diffère du nom anglais des fuseaux.
+# Villes dont le nom français diffère du nom anglais des fuseaux, et pays
+# d'un seul fuseau.
+[[word]]
+forms = ["Japon"]
+sense = "tz:Asia/Tokyo"
+
+[[word]]
+forms = ["Chine"]
+sense = "tz:Asia/Shanghai"
+
+[[word]]
+forms = ["Inde"]
+sense = "tz:Asia/Kolkata"
+
+[[word]]
+forms = ["Corée", "Corée du Sud", "Séoul"]
+sense = "tz:Asia/Seoul"
+
+[[word]]
+forms = ["Royaume-Uni", "Angleterre"]
+sense = "tz:Europe/London"
+
+[[word]]
+forms = ["Allemagne"]
+sense = "tz:Europe/Berlin"
+
+[[word]]
+forms = ["Espagne"]
+sense = "tz:Europe/Madrid"
+
+[[word]]
+forms = ["Italie"]
+sense = "tz:Europe/Rome"
+
+[[word]]
+forms = ["Suisse"]
+sense = "tz:Europe/Zurich"
+
+[[word]]
+forms = ["Belgique"]
+sense = "tz:Europe/Brussels"
+
+[[word]]
+forms = ["Grèce", "Athènes"]
+sense = "tz:Europe/Athens"
+
+[[word]]
+forms = ["Maroc"]
+sense = "tz:Africa/Casablanca"
+
+[[word]]
+forms = ["Singapour"]
+sense = "tz:Asia/Singapore"
+
+[[word]]
+forms = ["La Réunion", "Réunion"]
+sense = "tz:Indian/Reunion"
+
+[[word]]
+forms = ["Nouvelle-Calédonie", "Nouméa"]
+sense = "tz:Pacific/Noumea"
+
+[[word]]
+forms = ["Martinique"]
+sense = "tz:America/Martinique"
+
+[[word]]
+forms = ["Guadeloupe"]
+sense = "tz:America/Guadeloupe"
 [[word]]
 forms = ["Londres"]
 sense = "tz:Europe/London"
@@ -493,3 +700,64 @@ sense = "unit:GBP"
 [[word]]
 forms = ["franc suisse", "francs suisses"]
 sense = "unit:CHF"
+
+# ---------------------------------------------------------------- commandes `>`
+# Mots des commandes de Flair et de leurs arguments (identifiants fixes).
+
+[commands]
+help = ["aide"]
+language = ["langue", "langues"]
+config = ["réglages", "réglage", "paramètres", "préférences"]
+theme = ["thème", "thèmes"]
+opacity = ["transparence", "opacité"]
+renderer = ["rendu", "moteur de rendu"]
+hotkey = ["raccourci", "raccourci clavier"]
+autostart = ["démarrage", "lancement au démarrage"]
+results = ["résultats", "nombre de résultats"]
+icons = ["icônes"]
+files = ["fichiers"]
+reindex = ["réindexer", "reindexer", "indexer"]
+web = ["web", "moteurs", "recherche web"]
+calc = ["calcul", "calculatrice"]
+battery = ["batterie"]
+lock = ["verrouiller", "verrouiller la session", "verrouillage"]
+sleep = ["veille", "mettre en veille", "suspendre"]
+shutdown = ["éteindre", "arrêter", "arrêter l'ordinateur", "éteindre l'ordinateur"]
+restart = ["redémarrer", "redémarrer l'ordinateur"]
+logout = ["se déconnecter", "déconnecter", "déconnexion", "fermer la session"]
+empty_trash = ["vider la corbeille", "corbeille"]
+stats = ["statistiques", "stats"]
+history_clear = ["historique effacer", "effacer l'historique", "effacer historique"]
+logs = ["logs", "journaux"]
+export = ["exporter", "sauvegarder"]
+import = ["importer", "restaurer"]
+undo = ["annuler"]
+update = ["mise à jour", "maj", "mettre à jour"]
+version = ["version"]
+quit = ["quitter"]
+restart_flair = ["redémarrer flair", "relancer flair", "relancer"]
+install = ["installer"]
+uninstall = ["désinstaller"]
+
+[arguments]
+on = ["oui", "activer", "activé", "vrai"]
+off = ["non", "désactiver", "désactivé", "faux"]
+add = ["ajouter", "ajoute"]
+remove = ["retirer", "supprimer", "enlever"]
+default = ["défaut", "par défaut", "réinitialiser"]
+open = ["ouvrir"]
+reload = ["recharger"]
+prefer = ["préférer", "en premier"]
+exclude = ["exclure"]
+hidden = ["cachés", "fichiers cachés"]
+clear = ["effacer", "vider"]
+pause = ["pause"]
+angle = ["angle"]
+digits = ["chiffres", "précision"]
+currency = ["devises"]
+bytes = ["octets"]
+binary = ["binaire", "binaires"]
+decimal = ["décimal", "décimaux", "décimale"]
+rollback = ["annuler", "retour arrière"]
+channel = ["canal"]
+interface = ["interface"]

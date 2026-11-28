@@ -4,13 +4,15 @@
 //! - X11: own implementation with `x11rb`, blocking on the X connection.
 //!   `global-hotkey`'s X11 backend wakes up every 50 ms to poll, which breaks
 //!   the "no wake-up when hidden" requirement.
-//! - Wayland: not possible this way; the XDG GlobalShortcuts portal comes with
-//!   milestone 8. Meanwhile, bind a desktop shortcut to `flair --toggle`.
+//! - Wayland: the XDG GlobalShortcuts portal when the desktop has it;
+//!   otherwise, bind a desktop shortcut to `flair --toggle`.
 
 use std::sync::Arc;
 
 use flair_core::settings::Hotkey;
 
+#[cfg(target_os = "linux")]
+mod portal;
 #[cfg(windows)]
 mod windows;
 #[cfg(target_os = "linux")]
@@ -36,7 +38,13 @@ pub struct Registration {
     #[cfg(windows)]
     _inner: windows::Registration,
     #[cfg(target_os = "linux")]
-    _inner: x11::Registration,
+    _inner: Inner,
+}
+
+#[cfg(target_os = "linux")]
+enum Inner {
+    X11(#[allow(dead_code)] x11::Registration),
+    Portal(#[allow(dead_code)] portal::Registration),
 }
 
 /// True when the session is Wayland (the window uses Wayland too).
@@ -47,17 +55,35 @@ pub fn is_wayland() -> bool {
 /// Registers on X11 even when a Wayland session is detected (tests, XWayland).
 #[cfg(target_os = "linux")]
 pub fn register_x11(hotkey: &Hotkey, on_press: Callback) -> Result<Registration, HotkeyError> {
-    x11::register(hotkey, on_press).map(|inner| Registration { _inner: inner })
+    x11::register(hotkey, on_press).map(|inner| Registration {
+        _inner: Inner::X11(inner),
+    })
 }
 
 /// Registers `hotkey`; `on_press` runs on every press (not on key repeat).
-pub fn register(hotkey: &Hotkey, on_press: Callback) -> Result<Registration, HotkeyError> {
-    if is_wayland() {
-        return Err(HotkeyError::Unsupported);
+/// `description` is shown by Wayland desktops (portal).
+pub fn register(
+    hotkey: &Hotkey,
+    on_press: Callback,
+    description: &str,
+) -> Result<Registration, HotkeyError> {
+    #[cfg(target_os = "linux")]
+    {
+        if is_wayland() {
+            return portal::register(hotkey, on_press, description).map(|inner| Registration {
+                _inner: Inner::Portal(inner),
+            });
+        }
+        let _ = description;
+        let inner = x11::register(hotkey, on_press)?;
+        Ok(Registration {
+            _inner: Inner::X11(inner),
+        })
     }
     #[cfg(windows)]
-    let inner = windows::register(hotkey, on_press)?;
-    #[cfg(target_os = "linux")]
-    let inner = x11::register(hotkey, on_press)?;
-    Ok(Registration { _inner: inner })
+    {
+        let _ = description;
+        let inner = windows::register(hotkey, on_press)?;
+        Ok(Registration { _inner: inner })
+    }
 }

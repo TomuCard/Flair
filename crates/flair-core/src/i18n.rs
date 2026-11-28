@@ -110,6 +110,11 @@ impl I18n {
         self.lang
     }
 
+    /// True when the message exists.
+    pub fn has(&self, id: &str) -> bool {
+        self.bundle.has_message(id)
+    }
+
     /// Translates a message without arguments. A missing id returns the id itself.
     pub fn t(&self, id: &str) -> String {
         self.format(id, None)
@@ -168,6 +173,22 @@ impl I18n {
 mod tests {
     use super::*;
     use std::collections::BTreeSet;
+
+    #[test]
+    fn no_duplicate_ids() {
+        for lang in [Lang::Fr, Lang::En] {
+            let mut seen = BTreeSet::new();
+            for line in lang.source().lines() {
+                if let Some((id, _)) = line.split_once(" =")
+                    && !id.starts_with(' ')
+                    && !id.starts_with('#')
+                    && !id.is_empty()
+                {
+                    assert!(seen.insert(id.to_owned()), "{lang:?}: duplicate {id}");
+                }
+            }
+        }
+    }
 
     fn ids(lang: Lang) -> BTreeSet<String> {
         let resource = FluentResource::try_new(lang.source().to_owned()).expect("valid ftl");

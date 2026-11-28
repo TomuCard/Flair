@@ -25,8 +25,32 @@ const FEND_FUNCTIONS: &[&str] = &[
 ];
 
 /// Functions computed by Flair itself (see `eval`).
-pub const FLAIR_FUNCTIONS: &[&str] =
-    &["gcd", "lcm", "ncr", "npr", "factorial", "isprime", "bitnot"];
+pub const FLAIR_FUNCTIONS: &[&str] = &[
+    "gcd",
+    "lcm",
+    "ncr",
+    "npr",
+    "factorial",
+    "isprime",
+    "bitnot",
+    "max",
+    "min",
+    "avg",
+    "sum",
+];
+
+/// Functions known by name only before a parenthesis (`min` alone is a
+/// minute): `max(1, 2)`, `moyenne(2, 4, 6)`.
+const CALL_ONLY: &[(&str, &str)] = &[
+    ("max", "max"),
+    ("min", "min"),
+    ("avg", "avg"),
+    ("mean", "avg"),
+    ("average", "avg"),
+    ("moyenne", "avg"),
+    ("sum", "sum"),
+    ("somme", "sum"),
+];
 
 const TRIG: &[&str] = &["sin", "cos", "tan"];
 const INVERSE_TRIG: &[&str] = &["asin", "acos", "atan"];
@@ -374,6 +398,41 @@ pub fn segments(
         k = end.max(k + 1);
     }
 
+    // A time of day: `14h`, `3pm`, `14:30`, `midi`. Looking ahead it starts
+    // at its number; looking back it ends with its unit or minutes.
+    let clock_unit = |k: usize| {
+        unit_names[k]
+            .iter()
+            .any(|u| matches!(u.as_str(), "h" | "hour" | "am" | "pm"))
+            || matches!(raw[k].1.to_lowercase().as_str(), "am" | "pm")
+    };
+    let colon = |k: usize| matches!(raw[k].0, Kind::Symbol) && raw[k].1 == ":";
+    let clock_word = |k: usize| {
+        raw[k]
+            .2
+            .iter()
+            .any(|e| e.sense == "noon" || e.sense == "midnight")
+    };
+    let is_time = |k: usize, ahead: bool| -> bool {
+        if clock_word(k) {
+            return true;
+        }
+        if ahead {
+            is_number[k] && k + 1 < n && (clock_unit(k + 1) || colon(k + 1))
+        } else {
+            (clock_unit(k) && k > 0 && is_number[k - 1])
+                || (is_number[k] && k > 1 && (colon(k - 1) || clock_unit(k - 1)))
+        }
+    };
+    // A word no lexicon knows and that is no unit: maybe a city.
+    let is_word: Vec<bool> = (0..n)
+        .map(|k| {
+            matches!(raw[k].0, Kind::Word)
+                && raw[k].2.is_empty()
+                && !is_unit_seg[k]
+                && !vocabulary.is_blocked(&raw[k].1)
+        })
+        .collect();
     let has_class = |k: Option<usize>, class: &str, ahead: bool| -> bool {
         let Some(k) = k else {
             return false;
@@ -384,6 +443,8 @@ pub fn segments(
         // Looking ahead, a number starting a quantity counts as that quantity.
         let starts = |pred: &[bool]| ahead && is_number[k] && k + 1 < n && pred[k + 1];
         match class {
+            "time" => is_time(k, ahead),
+            "word" => is_word[k],
             "number" => is_number[k],
             "unit" => is_unit_seg[k],
             "quantity" => quantity[k] || starts(&quantity),
@@ -615,10 +676,57 @@ pub enum Piece {
     Sense(String),
     Month(u8),
     Weekday(u8),
-    /// A time zone named by a lexicon (`Londres` → `Europe/London`).
-    Zone(String),
+    /// A time zone named by a lexicon (`Londres` → `Europe/London`), with
+    /// the word typed.
+    Zone(String, String),
     /// `:` (clock times) and `@` (Unix timestamps).
     Sym(String),
+}
+
+/// `3pm` → `15:00`, `9:30 am` → `9:30`: times of day, not picometres.
+fn clock_meridiem(p: &mut Vec<Piece>) {
+    let meridiem = |x: Option<&Piece>| match x {
+        Some(Piece::Unit(u)) => match u.to_lowercase().as_str() {
+            "am" => Some(false),
+            "pm" => Some(true),
+            _ => None,
+        },
+        _ => None,
+    };
+    let hour = |x: &Piece, pm: bool| -> Option<String> {
+        let Piece::Num(n) = x else { return None };
+        let h: u32 = n.parse().ok().filter(|h| (1..=12).contains(h))?;
+        Some((h % 12 + if pm { 12 } else { 0 }).to_string())
+    };
+    let mut i = 0;
+    while i < p.len() {
+        let colon = p.get(i + 1) == Some(&Piece::Sym(":".into()));
+        if let Some(pm) = meridiem(p.get(i + 1))
+            && let Some(h) = hour(&p[i], pm)
+        {
+            p.splice(
+                i..i + 2,
+                [
+                    Piece::Num(h),
+                    Piece::Sym(":".into()),
+                    Piece::Num("00".into()),
+                ],
+            );
+            i += 3;
+            continue;
+        }
+        if colon
+            && matches!(p.get(i + 2), Some(Piece::Num(_)))
+            && let Some(pm) = meridiem(p.get(i + 3))
+            && let Some(h) = hour(&p[i], pm)
+        {
+            p[i] = Piece::Num(h);
+            p.remove(i + 3);
+            i += 3;
+            continue;
+        }
+        i += 1;
+    }
 }
 
 fn decimal_to_binary(unit: &str) -> Option<&'static str> {
@@ -637,8 +745,24 @@ fn decimal_to_binary(unit: &str) -> Option<&'static str> {
 pub fn render(segments: &[Segment], reading: &Reading, options: RenderOptions) -> Option<Rendered> {
     let mut pieces: Vec<Piece> = Vec::new();
     let mut read_as: Vec<String> = Vec::new();
-    for (segment, &choice) in segments.iter().zip(&reading.0) {
+    for (index, (segment, &choice)) in segments.iter().zip(&reading.0).enumerate() {
         let candidate = &segment.candidates[choice];
+        let call = segments
+            .get(index + 1)
+            .is_some_and(|s| matches!(s.kind, Kind::Open));
+        if call
+            && let Some((_, f)) = CALL_ONLY
+                .iter()
+                .find(|(name, _)| lexicon::fold(&segment.text) == *name)
+        {
+            if choice > 0 {
+                // One reading is enough.
+                return None;
+            }
+            pieces.push(Piece::Func((*f).to_owned()));
+            read_as.push(segment.text.clone());
+            continue;
+        }
         let (piece, shown) = match (&candidate.sense, &segment.kind) {
             (Sense::Blocked, _) => return None,
             (Sense::Number(n), _) => (Piece::Num(n.clone()), n.clone()),
@@ -653,6 +777,13 @@ pub fn render(segments: &[Segment], reading: &Reading, options: RenderOptions) -
                 // `=` at the end (`2+2=`) is harmless.
                 "=" => continue,
                 ":" | "@" => (Piece::Sym(t.clone()), t.clone()),
+                // `5'11"`: feet and inches.
+                "'" | "’" if matches!(pieces.last(), Some(Piece::Num(_))) => {
+                    (Piece::Unit("foot".into()), "ft".into())
+                }
+                "\"" | "”" | "''" if matches!(pieces.last(), Some(Piece::Num(_))) => {
+                    (Piece::Unit("inch".into()), "in".into())
+                }
                 // Anything else (`@`, `$`, `&`…): not supported here.
                 _ => return None,
             },
@@ -665,6 +796,16 @@ pub fn render(segments: &[Segment], reading: &Reading, options: RenderOptions) -
                 } else {
                     (Piece::Value(t.clone()), t.clone())
                 }
+            }
+            (Sense::Lexicon(sense), _) if sense == "noon" || sense == "midnight" => {
+                let hour = if sense == "noon" { "12" } else { "0" };
+                pieces.extend([
+                    Piece::Num(hour.into()),
+                    Piece::Sym(":".into()),
+                    Piece::Num("00".into()),
+                ]);
+                read_as.push(segment.text.clone());
+                continue;
             }
             (Sense::Lexicon(sense), _) => {
                 let piece = match sense.as_str() {
@@ -694,7 +835,7 @@ pub fn render(segments: &[Segment], reading: &Reading, options: RenderOptions) -
                         } else if let Some(d) = s.strip_prefix("weekday:") {
                             Piece::Weekday(d.parse().ok()?)
                         } else if let Some(z) = s.strip_prefix("tz:") {
-                            Piece::Zone(z.to_owned())
+                            Piece::Zone(z.to_owned(), segment.text.clone())
                         } else {
                             Piece::Sense(s.to_owned())
                         }
@@ -713,6 +854,7 @@ pub fn render(segments: &[Segment], reading: &Reading, options: RenderOptions) -
         pieces.push(piece);
         read_as.push(shown);
     }
+    clock_meridiem(&mut pieces);
     let units: Vec<String> = pieces
         .iter()
         .filter_map(|p| match p {
@@ -744,6 +886,11 @@ pub fn render(segments: &[Segment], reading: &Reading, options: RenderOptions) -
         }
     }
     let raw_pieces = pieces.clone();
+    // A time of day alone (`14:30`, `3pm`): nothing to compute.
+    let clock_alone = matches!(
+        pieces.as_slice(),
+        [Piece::Num(_), Piece::Sym(c), Piece::Num(_)] if c == ":"
+    );
     let transfer = pieces.contains(&Piece::Sense("rate_at".into()));
     let Some(pieces) = rewrite(pieces.clone(), options) else {
         // Not for fend (dates, times…): the date and time evaluator may still
@@ -779,8 +926,15 @@ pub fn render(segments: &[Segment], reading: &Reading, options: RenderOptions) -
         .filter(|p| matches!(p, Piece::Num(_) | Piece::Value(_)))
         .count();
     let has_unit = pieces.iter().any(|p| matches!(p, Piece::Unit(_)));
+    // `0xff` and `1e6` alone are worth reading in plain decimal.
+    let literal = pieces.iter().any(|p| {
+        matches!(p, Piece::Num(n)
+            if n.starts_with("0x") || n.starts_with("0b") || n.starts_with("0o")
+                || n.contains(['e', 'E']))
+    });
     // `2pi` multiplies: not trivial, unlike `pi` or `42` alone.
-    let trivial = !operations && values < 2 && !(numbers == 1 && has_unit);
+    let trivial =
+        clock_alone || (!operations && values < 2 && !(numbers == 1 && has_unit) && !literal);
     let plain = pieces
         .iter()
         .all(|p| matches!(p, Piece::Num(_) | Piece::Op(_) | Piece::Open | Piece::Close));
@@ -854,6 +1008,56 @@ fn rewrite(mut p: Vec<Piece>, options: RenderOptions) -> Option<Vec<Piece>> {
         i += 1;
     }
 
+    // `5 m^2`, `5 mètres carrés`: the power belongs to the unit.
+    let mut i = 0;
+    while i + 1 < p.len() {
+        let power = match (&p[i], p.get(i + 1), p.get(i + 2)) {
+            (Piece::Unit(_), Some(Piece::Op(o)), Some(Piece::Num(n)))
+                if o == "^" && (n == "2" || n == "3") =>
+            {
+                Some((n.clone(), 3))
+            }
+            (Piece::Unit(_), Some(Piece::Text(t)), _) if t == "^2" || t == "^3" => {
+                Some((t[1..].to_owned(), 2))
+            }
+            _ => None,
+        };
+        if let (Some((n, len)), Piece::Unit(u)) = (power, &p[i]) {
+            let unit = Piece::Unit(format!("{u}^{n}"));
+            p.splice(i..i + len, [unit]);
+        }
+        i += 1;
+    }
+
+    // `1m80` → `(1 m + 80 cm)`.
+    let mut i = 0;
+    while i + 2 < p.len() {
+        let unit = |k: usize, names: &[&str]| matches!(p.get(k), Some(Piece::Unit(u)) if names.contains(&u.as_str()));
+        let num = |k: usize| matches!(p.get(k), Some(Piece::Num(_)));
+        let start_ok = num(i) && (i == 0 || !matches!(p[i - 1], Piece::Unit(_) | Piece::Num(_)));
+        let two_digits = matches!(p.get(i + 2), Some(Piece::Num(n)) if n.len() == 2);
+        if start_ok
+            && unit(i + 1, &["m"])
+            && two_digits
+            && !matches!(p.get(i + 3), Some(Piece::Unit(_) | Piece::Num(_)))
+        {
+            let group = vec![
+                Piece::Open,
+                p[i].clone(),
+                Piece::Unit("m".into()),
+                Piece::Op("+".into()),
+                p[i + 2].clone(),
+                Piece::Unit("cm".into()),
+                Piece::Close,
+            ];
+            let len = group.len();
+            p.splice(i..i + 3, group);
+            i += len;
+            continue;
+        }
+        i += 1;
+    }
+
     // Compact hours: `5h36` → `5 h 36 min`.
     let mut i = 0;
     while i + 1 < p.len() {
@@ -868,7 +1072,7 @@ fn rewrite(mut p: Vec<Piece>, options: RenderOptions) -> Option<Vec<Piece>> {
     if p.iter().any(|x| {
         matches!(
             x,
-            Piece::Sense(_) | Piece::Month(_) | Piece::Weekday(_) | Piece::Zone(_) | Piece::Sym(_)
+            Piece::Sense(_) | Piece::Month(_) | Piece::Weekday(_) | Piece::Zone(..) | Piece::Sym(_)
         )
     }) {
         // Dates and times: only the date and time evaluator can read them.
@@ -924,6 +1128,16 @@ fn rewrite(mut p: Vec<Piece>, options: RenderOptions) -> Option<Vec<Piece>> {
             i = end + 2;
         } else {
             i += 1;
+        }
+    }
+
+    // `10 % 3`: with a number after it, `%` is the remainder.
+    for i in 1..p.len().saturating_sub(1) {
+        if p[i] == Piece::Percent
+            && matches!(p[i - 1], Piece::Num(_) | Piece::Close)
+            && matches!(p[i + 1], Piece::Num(_) | Piece::Open | Piece::Func(_))
+        {
+            p[i] = Piece::Op("mod".into());
         }
     }
 
@@ -1030,9 +1244,11 @@ fn rewrite(mut p: Vec<Piece>, options: RenderOptions) -> Option<Vec<Piece>> {
             if matches!(&p[i], Piece::Func(f) if TRIG.contains(&f.as_str())) {
                 if p.get(i + 1) == Some(&Piece::Open) {
                     let close = matching_close(&p, i + 1)?;
-                    let has_angle = p[i + 2..close]
-                        .iter()
-                        .any(|x| matches!(x, Piece::Unit(u) | Piece::Value(u) if ANGLE_UNITS.contains(&u.as_str())));
+                    // An angle unit, or `pi` (`sin(pi/6)` is in radians).
+                    let has_angle = p[i + 2..close].iter().any(|x| {
+                        matches!(x, Piece::Unit(u) | Piece::Value(u)
+                            if ANGLE_UNITS.contains(&u.as_str()) || u == "pi" || u == "π")
+                    });
                     if !has_angle {
                         p.insert(close, Piece::Close);
                         p.insert(close + 1, Piece::Unit("°".into()));
@@ -1113,7 +1329,7 @@ fn to_text(pieces: &[Piece]) -> String {
             Piece::Sense(_)
             | Piece::Month(_)
             | Piece::Weekday(_)
-            | Piece::Zone(_)
+            | Piece::Zone(..)
             | Piece::Sym(_) => ("?", false),
         };
         if !out.is_empty() && !glue && !out.ends_with('(') {
@@ -1216,8 +1432,8 @@ mod tests {
 
     #[test]
     fn whole_tokens_only() {
-        // `de` is not replaced inside `dernier`, nor `in` inside `minutes`.
-        assert_eq!(best("15% dernier"), "(15/100) dernier");
+        // `de` is not replaced inside `depart`, nor `in` inside `minutes`.
+        assert_eq!(best("15% depart"), "(15/100) depart");
         assert_eq!(best("5 minutes"), "(5 minute)");
     }
 

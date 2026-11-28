@@ -61,6 +61,10 @@ pub enum EvalError {
     Invalid,
     /// Too long or too large to compute (`10^10^10^10`, `1000000!`).
     TooBig,
+    /// `1/0`, `5 mod 0`.
+    DivisionByZero,
+    /// Outside the domain of a function: `log(0)`, `tan(90)`, `(-1)!`.
+    Undefined,
 }
 
 /// Evaluates with fend only.
@@ -78,6 +82,15 @@ pub fn fend(expr: &str, env: &Env) -> Result<(String, bool), EvalError> {
         fend_core::evaluate_with_interrupt(expr, &mut context, &deadline).map_err(|e| {
             if e == "interrupted" || deadline.passed() {
                 EvalError::TooBig
+            } else if e == "division by zero" || e == "modulo by zero" {
+                // `tan(90°)` divides by zero inside fend: undefined.
+                if expr.contains('/') || expr.contains("mod") || expr.contains('%') {
+                    EvalError::DivisionByZero
+                } else {
+                    EvalError::Undefined
+                }
+            } else if e.contains("must lie in the interval") {
+                EvalError::Undefined
             } else {
                 EvalError::Invalid
             }
@@ -202,6 +215,30 @@ fn expand(expr: &str, deadline: &Env) -> Result<String, EvalError> {
                     };
                 }
                 acc.to_string()
+            }
+            ("sum" | "avg", args) if args.iter().all(|a| !a.is_empty()) => {
+                let total = args
+                    .iter()
+                    .map(|a| format!("({a})"))
+                    .collect::<Vec<_>>()
+                    .join(" + ");
+                if name == "sum" {
+                    format!("({total})")
+                } else {
+                    format!("(({total}) / {})", args.len())
+                }
+            }
+            ("max" | "min", [first, others @ ..]) if !first.is_empty() => {
+                // Compared by fend, so that units work too (`max(1 km, 900 m)`).
+                let mut best = *first;
+                for arg in others {
+                    let (diff, _) = fend(&format!("({arg}) - ({best})"), deadline)?;
+                    let below = diff.starts_with('-');
+                    if (name == "max") != below {
+                        best = arg;
+                    }
+                }
+                format!("({best})")
             }
             // `isprime` inside a larger expression, wrong argument counts…
             _ => return Err(EvalError::Invalid),
@@ -336,7 +373,10 @@ mod tests {
         assert_eq!(value("1/3 + 1/6"), "0.5");
         assert_eq!(value("(5 km) to miles"), "3.106855961186669849 miles");
         assert_eq!(eval("5 km + 3 kg"), Err(EvalError::Invalid));
-        assert_eq!(eval("1/0"), Err(EvalError::Invalid));
+        assert_eq!(eval("1/0"), Err(EvalError::DivisionByZero));
+        assert_eq!(eval("10 mod 0"), Err(EvalError::DivisionByZero));
+        assert_eq!(eval("log(0)"), Err(EvalError::Undefined));
+        assert_eq!(eval("tan((90) °)"), Err(EvalError::Undefined));
         assert_eq!(eval("x: x^2"), Err(EvalError::Invalid));
     }
 

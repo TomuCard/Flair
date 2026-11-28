@@ -231,6 +231,31 @@ sense = "func:acos"
 forms = ["arctan"]
 sense = "func:atan"
 
+# `100 c to f`: temperatures, only around a conversion.
+[[word]]
+forms = ["c", "C"]
+sense = "unit:°C"
+when = { between = ["number", "sense:convert_to"] }
+priority = 10
+
+[[word]]
+forms = ["c", "C"]
+sense = "unit:°C"
+when = { after = "sense:convert_to", position = "end" }
+priority = 10
+
+[[word]]
+forms = ["f", "F"]
+sense = "unit:°F"
+when = { between = ["number", "sense:convert_to"] }
+priority = 10
+
+[[word]]
+forms = ["f", "F"]
+sense = "unit:°F"
+when = { after = "sense:convert_to", position = "end" }
+priority = 10
+
 # ---------------------------------------------------------------- numeral bases
 
 [[word]]
@@ -245,6 +270,10 @@ sense = "fend:binary"
 forms = ["oct"]
 sense = "fend:octal"
 priority = 5
+
+[[word]]
+forms = ["octal"]
+sense = "fend:octal"
 
 # ---------------------------------------------------------------- bitwise
 
@@ -272,9 +301,72 @@ sense = "unix"
 when = { after = "sense:convert_to" }
 
 [[word]]
-forms = ["UTC", "GMT"]
+forms = ["unix", "timestamp", "epoch"]
+sense = "unix_at"
+when = { position = "start", before = "number" }
+
+[[word]]
+forms = ["UTC", "GMT", "utc", "gmt"]
 sense = "tz:UTC"
 case_sensitive = true
+
+[[word]]
+forms = ["CET", "CEST"]
+sense = "tz:Europe/Paris"
+case_sensitive = true
+
+[[word]]
+forms = ["BST"]
+sense = "tz:Europe/London"
+case_sensitive = true
+
+[[word]]
+forms = ["PST", "PDT"]
+sense = "tz:America/Los_Angeles"
+case_sensitive = true
+
+[[word]]
+forms = ["EST", "EDT"]
+sense = "tz:America/New_York"
+case_sensitive = true
+
+[[word]]
+forms = ["CST", "CDT"]
+sense = "tz:America/Chicago"
+case_sensitive = true
+
+[[word]]
+forms = ["MST", "MDT"]
+sense = "tz:America/Denver"
+case_sensitive = true
+
+[[word]]
+forms = ["JST", "jst"]
+sense = "tz:Asia/Tokyo"
+case_sensitive = true
+
+[[word]]
+forms = ["IST"]
+sense = "tz:Asia/Kolkata"
+case_sensitive = true
+
+[[word]]
+forms = ["AEST", "AEDT", "aest", "aedt"]
+sense = "tz:Australia/Sydney"
+case_sensitive = true
+
+[[word]]
+forms = ["MSK"]
+sense = "tz:Europe/Moscow"
+case_sensitive = true
+
+[[word]]
+forms = ["France", "Paris"]
+sense = "tz:Europe/Paris"
+
+[[word]]
+forms = ["halloween"]
+sense = "holiday:10-31"
 
 # ---------------------------------------------------------------- currencies (with `currency = true`)
 
@@ -293,3 +385,16 @@ sense = "unit:GBP"
 [[word]]
 forms = ["¥"]
 sense = "unit:JPY"
+
+# ---------------------------------------------------------------- commands `>`
+# Always available, whatever the input languages: `> help`, `> config` and
+# `> langue` let users re-enable a language they disabled.
+
+[commands]
+help = ["help", "aide", "?"]
+config = ["config", "configuration", "conf"]
+language = ["langue", "langues", "language", "languages"]
+
+[arguments]
+on = ["on", "true", "1"]
+off = ["off", "false", "0"]

@@ -24,7 +24,7 @@ pub const MAX_FORM_TOKENS: usize = 6;
 
 /// Classes a condition may refer to.
 pub const CLASSES: &[&str] = &[
-    "number", "quantity", "unit", "duration", "time", "date", "percent", "start", "end",
+    "number", "quantity", "unit", "duration", "time", "date", "percent", "word", "start", "end",
 ];
 
 /// Senses that are not `prefix:value` (see `lexicon/README.md`).
@@ -46,11 +46,20 @@ pub const SENSES: &[&str] = &[
     "tomorrow",
     "yesterday",
     "unix",
+    "unix_at",
+    "at",
+    "from",
+    "next",
+    "last",
+    "from_now",
+    "noon",
+    "midnight",
+    "age",
 ];
 
 /// Prefixes of parameterized senses (`unit:day`, `op:*`, `func:sqrt`…).
 pub const SENSE_PREFIXES: &[&str] = &[
-    "unit:", "op:", "func:", "const:", "fend:", "month:", "weekday:", "tz:",
+    "unit:", "op:", "func:", "const:", "fend:", "month:", "weekday:", "tz:", "holiday:",
 ];
 
 /// Date order of a language, for `01/02/2026`.
@@ -163,6 +172,22 @@ pub struct Lexicon {
     pub meta: Meta,
     #[serde(default, rename = "word")]
     pub words: Vec<Word>,
+    /// Words of Flair's `>` commands: command id → forms
+    /// (`lock = ["verrouiller", "verrouiller la session"]`).
+    #[serde(default)]
+    pub commands: BTreeMap<String, Vec<String>>,
+    /// Words of their arguments: argument id → forms (`on = ["oui",
+    /// "activer"]`).
+    #[serde(default)]
+    pub arguments: BTreeMap<String, Vec<String>>,
+}
+
+/// Command and argument ids: lowercase ASCII letters, digits and `_`.
+fn valid_id(id: &str) -> bool {
+    !id.is_empty()
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -204,6 +229,27 @@ impl Lexicon {
         if !code_ok {
             return Err(LexiconError::Code(code.clone()));
         }
+        for (kind, table) in [
+            ("command", &lexicon.commands),
+            ("argument", &lexicon.arguments),
+        ] {
+            for (id, forms) in table {
+                if !valid_id(id) {
+                    return Err(LexiconError::Word {
+                        index: 0,
+                        form: id.clone(),
+                        reason: format!("invalid {kind} id"),
+                    });
+                }
+                if forms.is_empty() || forms.iter().any(|f| f.trim().is_empty()) {
+                    return Err(LexiconError::Word {
+                        index: 0,
+                        form: id.clone(),
+                        reason: format!("empty form for {kind}"),
+                    });
+                }
+            }
+        }
         for (index, word) in lexicon.words.iter().enumerate() {
             let fail = |reason: String| LexiconError::Word {
                 index: index + 1,
@@ -237,6 +283,18 @@ impl Lexicon {
 /// (`Année` → `annee`).
 pub fn fold(text: &str) -> String {
     text.chars().flat_map(fold_char).collect()
+}
+
+/// [`fold`] into a reused buffer (hot loops: no allocation per text).
+pub fn fold_into(text: &str, out: &mut String) {
+    out.clear();
+    for c in text.chars() {
+        if c.is_ascii() {
+            out.push(c.to_ascii_lowercase());
+        } else {
+            out.extend(fold_char(c));
+        }
+    }
 }
 
 fn fold_char(c: char) -> impl Iterator<Item = char> {
@@ -326,6 +384,7 @@ fn class_example(class: &str) -> &str {
         "duration" => "2 h",
         "time" => "14:30",
         "date" => "2026-01-01",
+        "word" => "Tokyo",
         "percent" => "15 %",
         "start" | "end" => "",
         _ => "x",

@@ -15,11 +15,15 @@ use flair_providers::Providers;
 use flair_providers::apps::{AppsProvider, Texts};
 use flair_providers::calc::currency::{Rates, SharedRates};
 use flair_providers::calc::{self, CalcProvider, Calculator};
+use flair_providers::files::{self, FilesProvider};
+use flair_providers::system::{self, SystemProvider};
+use flair_providers::web::{self, Engine, WebProvider};
 
 #[derive(Clone)]
 pub struct Sources {
     pub apps: AppsProvider,
     pub calc: Arc<CalcProvider>,
+    pub files: FilesProvider,
     pub frecency: Arc<Mutex<Frecency>>,
     pub history: Arc<Mutex<History>>,
     rates: SharedRates,
@@ -86,6 +90,24 @@ fn refresh_rates(rates: &SharedRates, file: &std::path::Path) {
     }
 }
 
+fn home() -> Option<std::path::PathBuf> {
+    directories::BaseDirs::new().map(|b| b.home_dir().to_owned())
+}
+
+/// The files settings of a configuration.
+fn files_settings(config: &Config) -> files::Settings {
+    let f = &config.files;
+    files::Settings::new(
+        f.enabled,
+        &f.roots,
+        &f.exclude,
+        f.include_hidden,
+        f.other_drives,
+        config.resources.pause_on_battery,
+        home().as_deref(),
+    )
+}
+
 fn texts(i18n: &I18n) -> Texts {
     Texts {
         lang: match i18n.lang() {
@@ -146,6 +168,14 @@ impl Sources {
             // before the first query.
             apps.scan_blocking();
         }
+        let files = FilesProvider::new(
+            paths.data_dir.join("index"),
+            home(),
+            Arc::clone(&frecency),
+            files_settings(config),
+        );
+        files.start(watch);
+        crate::stats::set_files(files.clone());
         let lexicon_dir = paths.lexicon_dir();
         let history = Arc::new(Mutex::new(History::load(
             &paths.data_dir.join("history.json"),
@@ -166,6 +196,7 @@ impl Sources {
         Self {
             apps,
             calc,
+            files,
             frecency,
             history,
             rates,
@@ -184,20 +215,63 @@ impl Sources {
         if config.providers.apps {
             sources.push(Arc::new(self.apps.clone()));
         }
-        Arc::new(Providers::new(
-            sources,
-            config.max_results as usize,
-            config
-                .providers
-                .web
-                .then(|| i18n.t_args("web-search", &[("query", "%s")])),
-        ))
+        if config.files.enabled {
+            sources.push(Arc::new(self.files.clone()));
+        }
+        if config.providers.system {
+            sources.push(Arc::new(SystemProvider::new(
+                self.system_entries(i18n, config),
+            )));
+        }
+        let web = config.providers.web.then(|| {
+            Arc::new(WebProvider::new(
+                config
+                    .web
+                    .iter()
+                    .map(|e| Engine {
+                        keyword: e.keyword.clone(),
+                        name: e.name.clone(),
+                        url: e.url.clone(),
+                    })
+                    .collect(),
+                web::Texts {
+                    search_with: i18n
+                        .t_args("web-search-with", &[("query", "%q"), ("engine", "%e")]),
+                    search_web: i18n.t_args("web-search", &[("query", "%q")]),
+                },
+            ))
+        });
+        Arc::new(Providers::new(sources, config.max_results as usize, web))
+    }
+
+    /// System commands found without `>`, with the words of the active
+    /// languages.
+    fn system_entries(&self, i18n: &I18n, config: &Config) -> Vec<system::Entry> {
+        let words = crate::commands::words(config, &self.lexicon_dir, i18n.lang());
+        crate::commands::CATALOG
+            .iter()
+            .filter_map(|c| match c.run {
+                crate::commands::Run::System(command) => Some(system::Entry {
+                    command,
+                    title: i18n.t(&format!("cmd-{}", c.id)),
+                    subtitle: i18n.t("kind-system"),
+                    words: words
+                        .all_forms(c.id)
+                        .iter()
+                        .map(|w| (*w).to_owned())
+                        .collect(),
+                }),
+                _ => None,
+            })
+            .filter(|e| !e.words.is_empty())
+            .collect()
     }
 
     /// Configuration reloaded: new language and settings, language files and
     /// launch history maybe imported.
     pub fn reload(&self, config: &Config, i18n: &I18n) {
         self.apps.set_texts(texts(i18n));
+        self.files.reconfigure(files_settings(config));
         if config.calc.currency {
             refresh_rates(&self.rates, &self.rates_file);
         }

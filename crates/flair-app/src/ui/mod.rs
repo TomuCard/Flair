@@ -61,6 +61,21 @@ pub struct Flair {
     update_available: Option<String>,
     /// Backup made before the last import (`> undo`).
     last_import_backup: Option<PathBuf>,
+    /// Last setting changed by a command, with its previous value (`> undo`,
+    /// before the import backup).
+    last_setting: Option<(String, Option<toml::Value>)>,
+    /// Words of the `>` commands, from the active languages.
+    words: flair_core::command_words::CommandWords,
+    /// Input languages available (`> langue`).
+    languages: Vec<crate::commands::Language>,
+    /// What `Tab` writes for each command result.
+    completions: Vec<Option<String>>,
+    /// Id of the row waiting for a second `Enter` (shut down, restart…).
+    pending_confirm: Option<String>,
+    /// A setting is previewed (the look differs from the configuration).
+    previewing: bool,
+    /// Counts hides: a memory release only applies to the latest one.
+    hides: u64,
     i18n: Arc<I18n>,
     tokens: Tokens,
     opacity: f32,
@@ -188,6 +203,9 @@ impl Flair {
             || !messages.is_empty()
             || init.initial != Initial::Search;
         let update_files = updater::Files::new(&init.paths.data_dir);
+        let lexicon_dir = init.paths.lexicon_dir();
+        let words = crate::commands::words(&init.config, &lexicon_dir, init.i18n.lang());
+        let languages = crate::commands::languages(&lexicon_dir);
         let mut state = Self {
             window: None,
             visible: false,
@@ -200,6 +218,13 @@ impl Flair {
             dialog_open: false,
             update_available: None,
             last_import_backup: None,
+            last_setting: None,
+            words,
+            languages,
+            completions: Vec::new(),
+            pending_confirm: None,
+            previewing: false,
+            hides: 0,
             i18n: init.i18n,
             tokens: init.tokens,
             #[allow(clippy::cast_possible_truncation)]
@@ -413,6 +438,18 @@ impl Flair {
             }
             External::Open(path) => Task::batch([self.read_import(path), self.show()]),
             External::Tray(action) => self.on_tray(action),
+            External::Release(hide) => {
+                if !self.visible && hide == self.hides {
+                    self.release_memory();
+                }
+                Task::none()
+            }
+            External::SystemTheme(dark) => {
+                tracing::info!(dark, "system theme changed");
+                crate::themes::set_system_dark(Some(dark));
+                self.apply_look();
+                Task::none()
+            }
         }
     }
 
@@ -440,6 +477,7 @@ impl Flair {
             TrayAction::Reindex => {
                 if let Some(sources) = &self.sources {
                     sources.apps.refresh();
+                    sources.files.reindex();
                 }
                 Task::none()
             }
@@ -482,6 +520,14 @@ impl Flair {
         }
         self.visible = true;
         crate::stats::set_visible(true);
+        // A pending memory release is dropped; the efficiency mode ends.
+        self.hides += 1;
+        if self.config.resources.efficiency_mode {
+            flair_platform::memory::wake();
+        }
+        if let Some(sources) = &self.sources {
+            sources.files.on_show();
+        }
         self.show_requested = Some(Instant::now());
         self.was_focused = false;
         let auto_check = self.maybe_auto_check();
@@ -522,7 +568,13 @@ impl Flair {
     fn reload_config(&mut self) {
         let text = std::fs::read_to_string(&self.config_path).unwrap_or_default();
         let loaded = flair_core::settings::parse_config(&text);
-        let config = loaded.config;
+        let invalid_themes = crate::themes::reload(&self.paths.themes_dir());
+        // A file that cannot be read keeps the last valid configuration.
+        let config = if loaded.is_syntax_error() {
+            self.config.clone()
+        } else {
+            loaded.config
+        };
         if config.hotkey != self.config.hotkey {
             self.services.reregister_hotkey(&config.hotkey);
         }
@@ -530,17 +582,26 @@ impl Flair {
         if lang != self.i18n.lang() {
             self.i18n = Arc::new(I18n::new(lang));
         }
-        self.tokens = crate::themes::active(&config).tokens();
-        #[allow(clippy::cast_possible_truncation)]
-        {
-            self.opacity = config.theme.opacity as f32;
-        }
         if let Some(sources) = &self.sources {
             sources.reload(&config, &self.i18n);
             self.provider = sources.providers(&self.i18n, &config);
         }
         self.notices = notices_for(&self.i18n, &loaded.issues);
+        for (file, error) in invalid_themes {
+            let name = file
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            self.notices.push(crate::commands::info(
+                self.i18n.t_args("theme-invalid", &[("file", &name)]),
+                Some(error),
+            ));
+        }
+        let lexicon_dir = self.paths.lexicon_dir();
+        self.words = crate::commands::words(&config, &lexicon_dir, self.i18n.lang());
+        self.languages = crate::commands::languages(&lexicon_dir);
         self.config = config;
+        self.apply_look();
         tracing::info!("configuration reloaded");
     }
 
@@ -580,6 +641,8 @@ impl Flair {
             self.screen_rows.clear();
         }
         self.input = value;
+        self.pending_confirm = None;
+        self.completions.clear();
         self.cancel.cancel();
         self.cancel = CancellationToken::new();
         self.query_seq += 1;
@@ -593,14 +656,21 @@ impl Flair {
             });
             let cx = crate::commands::Context {
                 i18n: &self.i18n,
+                words: &self.words,
+                config: &self.config,
+                languages: &self.languages,
                 portable,
                 update_available: self.update_available.as_deref(),
             };
-            self.results = crate::commands::rows(&query.text, &cx);
+            let rows = crate::commands::rows(&query.text, &cx);
+            self.completions = rows.iter().map(|r| r.completion.clone()).collect();
+            self.results = rows.into_iter().map(|r| r.item).collect();
             self.selected = 0;
+            self.update_preview();
             self.dev.shot_pending = self.dev.screenshot.is_some();
             return Task::batch([self.resize(), self.scroll_to(0.0)]);
         }
+        self.end_preview();
         // `=` alone shows the calculation history; otherwise nothing to search.
         if query.is_empty() && query.filter != Some(ProviderKind::Calculator) {
             self.results.clear();
@@ -669,6 +739,8 @@ impl Flair {
             return Task::none();
         }
         self.selected = index.min(len - 1);
+        self.pending_confirm = None;
+        self.update_preview();
         self.ensure_visible()
     }
 
@@ -700,14 +772,15 @@ impl Flair {
         let Some(item) = self.rows().get(self.selected) else {
             return Task::none();
         };
+        let showing_results = std::ptr::eq(self.rows().as_ptr(), self.results.as_ptr());
+        let command_completion = showing_results
+            .then(|| self.completions.get(self.selected).cloned().flatten())
+            .flatten();
         let text = match (item.provider, item.primary_action()) {
-            (ProviderKind::File, _) => item.copy_text(),
+            (ProviderKind::File, _) => file_completion(&item.copy_text(), &self.input),
             // Commands keep their `>` prefix: `> ver` + Tab gives `> version`.
-            (_, Some(Action::Internal { command })) => {
-                match crate::commands::completion(command, self.i18n.lang()) {
-                    Some(text) => text,
-                    None => return Task::none(),
-                }
+            (ProviderKind::Command | ProviderKind::System, _) if command_completion.is_some() => {
+                command_completion.unwrap_or_default()
             }
             // Information rows (notices, statistics) cannot be completed.
             (ProviderKind::Command, None) => return Task::none(),
@@ -720,7 +793,7 @@ impl Flair {
     }
 
     fn activate(&mut self, index: usize, which: Which) -> Task<Message> {
-        let Some(item) = self.rows().get(index) else {
+        let Some(item) = self.rows().get(index).cloned() else {
             return Task::none();
         };
         let action = match which {
@@ -732,6 +805,20 @@ impl Flair {
         let Some(action) = action.cloned() else {
             return Task::none();
         };
+        // Shut down, restart, log out, empty the trash, clear the history:
+        // a second `Enter` confirms.
+        if crate::commands::needs_confirmation(&action)
+            && self.pending_confirm.as_deref() != Some(item.id.as_str())
+        {
+            let id = item.id.clone();
+            let hint = self.i18n.t("confirm-again");
+            if let Some(row) = self.results.iter_mut().find(|r| r.id == id) {
+                row.subtitle = Some(hint);
+            }
+            self.pending_confirm = Some(id);
+            return Task::none();
+        }
+        self.pending_confirm = None;
         tracing::info!(id = %item.id, ?action, "activate");
         // Copied calculations go to the history (`=` alone lists them).
         if item.provider == ProviderKind::Calculator
@@ -767,7 +854,9 @@ impl Flair {
                 self.hide()
             }
             Action::RevealInFolder { path } => {
-                open(path.parent().unwrap_or(&path));
+                if let Err(e) = flair_platform::open::reveal_path(&path) {
+                    tracing::error!(path = %path.display(), "cannot show in its folder: {e}");
+                }
                 self.hide()
             }
             Action::OpenUrl { url } => {
@@ -783,8 +872,15 @@ impl Flair {
                 launch(target, true);
                 self.hide()
             }
-            // System commands: milestone 7.
-            Action::SystemCommand(_) => self.hide(),
+            Action::SystemCommand(command) => {
+                // Off the interface thread: logind or the shell may take time.
+                std::thread::spawn(move || {
+                    if let Err(e) = flair_platform::system::run(command) {
+                        tracing::error!(?command, "system command failed: {e}");
+                    }
+                });
+                self.hide()
+            }
         }
     }
 
@@ -794,7 +890,10 @@ impl Flair {
         let text = Query::parse(&self.input).text;
         let main = flair_providers::calc::MAIN_ID;
         if let Some(item) = self.results.iter().find(|r| r.id == main) {
-            self.last_calc = Some((text, item.clone()));
+            // An error (`Cannot divide by zero`) is shown, never kept.
+            if !item.actions.is_empty() {
+                self.last_calc = Some((text, item.clone()));
+            }
             return;
         }
         let continues = self.last_calc.as_ref().is_some_and(|(previous, _)| {
@@ -829,6 +928,9 @@ impl Flair {
         }
         self.hovered = None;
         self.ctrl_held = false;
+        self.pending_confirm = None;
+        self.end_preview();
+        self.schedule_release();
         if !self.config.keep_last_query {
             self.input.clear();
             self.results.clear();
@@ -850,6 +952,111 @@ impl Flair {
     }
 
     /// Height of the visible frame for the current rows.
+    /// Previews the setting of the selected row when it only changes the
+    /// look (`> config theme.mode dark`); `Enter` keeps it, anything else
+    /// goes back.
+    fn update_preview(&mut self) {
+        let command = std::ptr::eq(self.rows().as_ptr(), self.results.as_ptr())
+            .then(|| self.results.get(self.selected))
+            .flatten()
+            .and_then(|row| match row.primary_action() {
+                Some(Action::Internal { command }) => Some(command.clone()),
+                _ => None,
+            });
+        // A theme of `> thème`, listed or being created.
+        if let Some(theme) = command
+            .as_deref()
+            .and_then(crate::commands::theme::previewed)
+        {
+            self.tokens = theme.tokens();
+            self.previewing = true;
+            return;
+        }
+        let preview = command
+            .as_deref()
+            .and_then(crate::commands::settings::decode_set)
+            .filter(|(key, _)| crate::commands::settings::PREVIEWED.contains(&key.as_str()))
+            .and_then(|(key, value)| {
+                crate::commands::settings::with_value(&self.config, &key, &value)
+            });
+        match preview {
+            Some(config) => {
+                self.tokens = crate::themes::active(&config).tokens();
+                #[allow(clippy::cast_possible_truncation)]
+                {
+                    self.opacity = config.theme.opacity as f32;
+                }
+                self.previewing = true;
+            }
+            None => self.end_preview(),
+        }
+    }
+
+    /// The look of the configuration (theme, system preference, opacity),
+    /// and the tray icon in its color.
+    fn apply_look(&mut self) {
+        self.previewing = false;
+        self.tokens = crate::themes::active(&self.config).tokens();
+        #[allow(clippy::cast_possible_truncation)]
+        {
+            self.opacity = self.config.theme.opacity as f32;
+        }
+        if let Some(tray) = &mut self.services.tray
+            && let Ok(icon) = crate::services::tray_icon(&self.config, &self.tokens)
+        {
+            tray.set_icon(icon);
+        }
+    }
+
+    /// One wake-up, `trim_memory_after` seconds after hiding (0: never).
+    fn schedule_release(&mut self) {
+        self.hides += 1;
+        let delay = self.config.resources.trim_memory_after;
+        if delay == 0 || self.dev.screenshot.is_some() {
+            return;
+        }
+        let hide = self.hides;
+        let spawned = std::thread::Builder::new()
+            .name("release-memory".into())
+            .spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(u64::from(delay)));
+                crate::external::send(External::Release(hide));
+            });
+        if let Err(e) = spawned {
+            tracing::debug!(error = %e, "cannot schedule the memory release");
+        }
+    }
+
+    /// Hidden for a while: caches emptied, memory given back to the system.
+    fn release_memory(&mut self) {
+        let before = flair_platform::memory::resident_bytes();
+        self.icon_handles = view::IconHandles::default();
+        if !self.config.keep_last_query {
+            self.results = Vec::new();
+            self.completions = Vec::new();
+        }
+        self.screen_rows.shrink_to_fit();
+        flair_platform::memory::release(self.config.resources.efficiency_mode);
+        let after = flair_platform::memory::resident_bytes();
+        tracing::info!(
+            before_mb = before.map(|b| b / 1_048_576),
+            after_mb = after.map(|b| b / 1_048_576),
+            "memory released"
+        );
+    }
+
+    /// Back to the look of the configuration.
+    fn end_preview(&mut self) {
+        if self.previewing {
+            self.tokens = crate::themes::active(&self.config).tokens();
+            #[allow(clippy::cast_possible_truncation)]
+            {
+                self.opacity = self.config.theme.opacity as f32;
+            }
+            self.previewing = false;
+        }
+    }
+
     fn frame_height(&self) -> f32 {
         design::window_height(self.rows().iter().map(view::row_height))
     }
@@ -952,6 +1159,26 @@ fn launch(target: flair_core::LaunchTarget, elevated: bool) {
 }
 
 /// Opens a file, folder or URL with the default application; errors are logged.
+/// `Tab` on a file: its path, with `~` kept when typed, and a separator after
+/// a folder so that the next `Tab` goes inside.
+fn file_completion(path: &str, typed: &str) -> String {
+    let mut text = path.to_owned();
+    if typed.trim_start().starts_with('~')
+        && let Some(home) = directories::BaseDirs::new().map(|b| b.home_dir().to_owned())
+        && let Ok(rest) = std::path::Path::new(path).strip_prefix(&home)
+    {
+        text = if rest.as_os_str().is_empty() {
+            "~".into()
+        } else {
+            format!("~{}{}", std::path::MAIN_SEPARATOR, rest.display())
+        };
+    }
+    if std::path::Path::new(path).is_dir() && !text.ends_with(['/', '\\']) {
+        text.push(std::path::MAIN_SEPARATOR);
+    }
+    text
+}
+
 fn open(path: &std::path::Path) {
     if let Err(e) = flair_platform::open::open_path(path) {
         tracing::error!(path = %path.display(), "cannot open: {e}");
@@ -1244,10 +1471,122 @@ mod tests {
         );
     }
 
+    /// An app writing its configuration in a fresh temporary file.
+    fn app_with_config(tag: &str) -> (Flair, PathBuf) {
+        let mut app = app();
+        let dir =
+            std::env::temp_dir().join(format!("flair-ui-config-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("dir");
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "# mine\nmax_results = 8 # kept\n").expect("write");
+        app.config_path = path.clone();
+        (app, dir)
+    }
+
+    #[test]
+    fn config_commands_write_apply_and_undo() {
+        let (mut app, dir) = app_with_config("set");
+        let _ = app.update(Message::InputChanged("> config max_results 12".into()));
+        assert!(
+            app.results[0].title.contains("12"),
+            "{:?}",
+            app.results[0].title
+        );
+        named(&mut app, Named::Enter, Code::Enter);
+        assert_eq!(app.config.max_results, 12);
+        let text = std::fs::read_to_string(app.config_path.clone()).expect("read");
+        assert_eq!(text, "# mine\nmax_results = 12 # kept\n");
+        // Invalid: a message, nothing written.
+        let _ = app.update(Message::InputChanged("> config max_results 99".into()));
+        assert!(app.results[0].actions.is_empty());
+        named(&mut app, Named::Enter, Code::Enter);
+        assert_eq!(app.config.max_results, 12);
+        // `> annuler` restores the previous value.
+        let _ = app.update(Message::InputChanged("> annuler".into()));
+        named(&mut app, Named::Enter, Code::Enter);
+        assert_eq!(app.config.max_results, 8);
+        assert!(
+            std::fs::read_to_string(app.config_path.clone())
+                .expect("read")
+                .contains("max_results = 8 # kept")
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn looks_are_previewed_then_restored() {
+        let (mut app, dir) = app_with_config("preview");
+        let before = app.opacity;
+        let _ = app.update(Message::InputChanged("> transparence 0.9".into()));
+        assert!((app.opacity - 0.9).abs() < 1e-6, "previewed");
+        // Escape clears the field: back to the configured look.
+        named(&mut app, Named::Escape, Code::Escape);
+        assert!((app.opacity - before).abs() < 1e-6, "restored");
+        // Browsing the choices previews each; another command ends it.
+        let _ = app.update(Message::InputChanged("> config theme.mode ".into()));
+        assert!(!app.previewing, "first row: the setting itself");
+        named(&mut app, Named::ArrowDown, Code::ArrowDown);
+        assert!(app.previewing);
+        let _ = app.update(Message::InputChanged("> stats".into()));
+        assert!(!app.previewing);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn themes_are_created_previewed_and_applied() {
+        let (mut app, dir) = app_with_config("theme");
+        app.paths = flair_platform::paths::Paths::rooted(&dir);
+        let before = app.tokens;
+        let _ = app.update(Message::InputChanged(
+            "> thème 1E1B2E E6E1F5 B79CFF lavande".into(),
+        ));
+        assert!(app.previewing);
+        assert_ne!(app.tokens, before, "previewed at once");
+        named(&mut app, Named::Enter, Code::Enter);
+        let file = dir.join("config/themes/lavande.toml");
+        assert!(
+            std::fs::read_to_string(&file)
+                .expect("saved")
+                .contains("#1E1B2E")
+        );
+        assert_eq!(app.config.theme.dark, "lavande");
+        let text = std::fs::read_to_string(app.config_path.clone()).expect("config");
+        assert!(text.contains("dark = \"lavande\""), "{text}");
+        // Undo goes back to the previous dark theme.
+        let _ = app.update(Message::InputChanged("> annuler".into()));
+        named(&mut app, Named::Enter, Code::Enter);
+        assert_eq!(app.config.theme.dark, "Flair sombre");
+        crate::themes::reload(std::path::Path::new("/nonexistent"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn destructive_commands_need_a_second_enter() {
+        let mut app = app();
+        let _ = app.update(Message::InputChanged("> historique effacer".into()));
+        assert_eq!(app.results[0].id, "cmd:history_clear");
+        named(&mut app, Named::Enter, Code::Enter);
+        assert_eq!(app.pending_confirm.as_deref(), Some("cmd:history_clear"));
+        assert_eq!(
+            app.results[0].subtitle.as_deref(),
+            Some("Entrée à nouveau pour confirmer")
+        );
+        // Moving away cancels the confirmation.
+        named(&mut app, Named::ArrowDown, Code::ArrowDown);
+        assert_eq!(app.pending_confirm, None);
+        named(&mut app, Named::Enter, Code::Enter);
+        named(&mut app, Named::Enter, Code::Enter);
+        assert_eq!(app.pending_confirm, None, "confirmed and run");
+    }
+
     #[test]
     fn tab_on_a_command_keeps_the_prefix() {
         let mut app = app();
+        // `> ver` also finds `verrouiller`; `> versi` only the version.
         let _ = app.update(Message::InputChanged("> ver".into()));
+        assert_eq!(app.results.len(), 2);
+        let _ = app.update(Message::InputChanged("> versi".into()));
         assert_eq!(app.results.len(), 1);
         named(&mut app, Named::Tab, Code::Tab);
         assert_eq!(app.input, "> version");

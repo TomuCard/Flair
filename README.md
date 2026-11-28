@@ -6,7 +6,7 @@ Launcher clavier façon Spotlight / Raycast / PowerToys Run, en Rust, pour **Win
 |---|---|---|
 | ![](docs/screenshots/dark-en-apps.png) | ![](docs/screenshots/dark-en-calc.png) | ![](docs/screenshots/light-fr-apps.png) |
 
-> **État : jalon 5 (calculs avancés).** Flair est résident (icône de notification, raccourci global, instance unique, aucun réveil fenêtre cachée), s'installe lui-même, se met à jour par `> mise à jour` avec des versions signées publiées à chaque push sur `main`, et sauvegarde tout dans un fichier `.flair`. Il trouve et lance les **applications installées** (Windows et Linux, avec leurs icônes), classées par `nucleo-matcher` et par la frecency, et **calcule** en français et en anglais à la fois (nombres, fonctions, unités, octets, durées, heures, dates, fuseaux horaires, horodatages Unix, bases, opérations bit à bit, temps de transfert, devises). Les fichiers arrivent au jalon 6, le web et les commandes système au jalon 7. Le cahier des charges complet est dans [`PROMPT.md`](PROMPT.md).
+> **État : jalon 8 (thèmes, Wayland et finitions) — tous les jalons du cahier des charges sont faits.** Flair est résident (icône de notification, raccourci global, instance unique, aucun réveil fenêtre cachée), s'installe lui-même, se met à jour par `> mise à jour` avec des versions signées publiées à chaque push sur `main`, et sauvegarde tout dans un fichier `.flair`. Il trouve et lance les **applications installées** (Windows et Linux, avec leurs icônes), classées par `nucleo-matcher` et par la frecency, et **calcule** en français et en anglais à la fois (nombres, fonctions, unités, octets, durées, heures, dates, fuseaux horaires, horodatages Unix, bases, opérations bit à bit, temps de transfert, devises), et **cherche les fichiers** dans un index compact ouvert depuis le disque, tenu à jour en direct. La recherche web passe par des mots-clés configurables, les commandes système (verrouiller, éteindre…) sont reconnues en français et en anglais avec confirmation, et **tout se règle depuis Flair** avec les commandes `>` (`> config`, `> langue`, `> help`). Le cahier des charges complet est dans [`PROMPT.md`](PROMPT.md).
 
 ## Applications
 
@@ -14,6 +14,22 @@ Launcher clavier façon Spotlight / Raycast / PowerToys Run, en Rust, pour **Win
 - **Linux** : fichiers `.desktop` de `$XDG_DATA_HOME`, `$XDG_DATA_DIRS`, Flatpak et Snap, en respectant `NoDisplay`, `Hidden`, `OnlyShowIn`/`NotShowIn` et `TryExec`. `Name`, `Name[fr]`, `GenericName` et `Keywords` dans les deux langues sont indexés : `Fichiers` et `Files` trouvent tous les deux le gestionnaire de fichiers. Codes de `Exec` (`%f`, `%U`, `%i`, `%c`, `%k`…) et `Terminal=true` gérés. Icônes du thème courant (`freedesktop-icons`), PNG et SVG.
 - **Mise à jour à chaud** : les dossiers sources sont surveillés (`notify`) ; un changement relance l'indexation après 2 s de calme. « Réindexer » dans l'icône de notification force un nouveau parcours.
 - **Classement** : `nucleo-matcher` (accents et casse ignorés), bonus si la requête est le début du nom, d'un mot ou des initiales (`vsc` → **V**isual **S**tudio **C**ode), applications avant fichiers à score égal, et **frecency** : chaque lancement est enregistré dans `frecency.json` (nombre et date du dernier usage, inclus dans les exports `.flair`), et ce qui est lancé souvent et récemment remonte. Les correspondances trop dispersées (`calc` dans « Lo**c**al Security Poli**c**y ») sont écartées.
+
+## Fichiers
+
+On tape une partie du nom (`rapport`, `facture 2025`, `ete mer` pour `été à la mer.jpg`) : les fichiers et dossiers de l'index s'affichent avec leur dossier en sous-titre (`~/Documents/Projets`). `Entrée` ouvre avec l'application par défaut, `Ctrl+Entrée` ouvre le dossier qui le contient avec le fichier sélectionné (Explorateur ; sous Linux, le gestionnaire de fichiers via `org.freedesktop.FileManager1`, sinon le dossier), `Ctrl+C` copie le chemin.
+
+- **Recherche** : tous les mots tapés doivent être dans le nom, dans n'importe quel ordre, sans tenir compte de la casse ni des accents. Le nom exact passe en premier (avec ou sans extension : `rapport` → `rapport.pdf`), puis les noms qui commencent par la requête, puis ceux où elle commence un mot ; les dossiers avant les fichiers, les chemins courts avant les profonds, et la frecency fait remonter ce qu'on ouvre souvent. Mesuré : 2 à 6 ms sur 150 000 à 250 000 entrées (profil Windows réel, `/usr` + dossier personnel sous Linux), 12 à 19 ms sur un index synthétique d'un million d'entrées (moitié de noms accentués), sur 4 threads au-delà de 200 000 entrées.
+- **Chemins** : `~/Doc`, `/etc/`, `C:\Us`, `D:` listent le dossier directement (pas l'index), dossiers d'abord, filtrés par le début du nom ; `Tab` complète (avec `/` ou `\` après un dossier, pour continuer dedans, et `~` gardé s'il a été tapé). Les fichiers cachés ne s'affichent que si on tape `.`.
+- **Index compact** (`flair-providers/src/files/index.rs`) : tous les noms dans un seul tampon d'octets, chaque entrée en 12 octets (parent, début et longueur du nom, drapeaux), jamais un `String` ou un `PathBuf` par fichier ; les chemins sont reconstruits pour les seuls résultats affichés. Sauvegardé avec `rkyv` dans `index/files-<date>.idx` (dossier des données) et **ouvert par `memmap2`, sans copie** : le système ne charge que les pages lues par une recherche, et la validation `rkyv` à chaque ouverture coûte quelques microsecondes. Environ 27 octets par entrée sur disque (4,9 Mo pour 146 000 fichiers). Chaque scan écrit un nouveau fichier et supprime l'ancien : un fichier mappé ne peut pas être remplacé sous Windows.
+- **Démarrage** : l'index sauvegardé sert immédiatement, puis un scan complet rattrape en arrière-plan ce qui a changé pendant que Flair ne tournait pas.
+- **Scan** : parcours parallèle maison (la moitié des cœurs), qui construit directement l'index compact, chaque thread en **priorité arrière-plan** pour le CPU et le disque (`THREAD_MODE_BACKGROUND_BEGIN` sous Windows ; `nice 19` et `ioprio` classe *idle* sous Linux). Mesuré : 146 000 entrées en 0,6 s (profil Windows), 246 000 en 1 s (Linux). Les liens symboliques sont indexés mais jamais suivis ; les noms qui ne sont pas de l'Unicode valide sont ignorés.
+- **Exclusions** : `files.exclude` (par défaut `node_modules`, `.git`, `target`, `.cache`, `__pycache__`) accepte un nom (`node_modules`, `*.tmp`), une fin de chemin (`build/out`) ou un chemin absolu (`/proc`), avec `*`, sans tenir compte de la casse. S'y ajoutent les dossiers bruyants : `AppData\Local`, `AppData\LocalLow`, `AppData\Roaming\*\Cache`, `$Recycle.Bin`, `System Volume Information` sous Windows ; `/proc`, `/sys`, `/dev`, `/run`, `/tmp`, `~/.local/share/Trash` sous Linux ; les caches de navigateur (`cache2`, `GPUCache`, `Code Cache`). Fichiers cachés exclus par défaut (`files.include_hidden`), et sous Windows ceux qui ont l'attribut caché ou système.
+- **Racines** : `files.roots` (par défaut `["~"]`, qui contient Bureau, Documents, Téléchargements et Images) ; `files.other_drives = true` ajoute les autres disques fixes sous Windows (`D:\`, `E:\`…). Une racine contenue dans une autre n'est parcourue qu'une fois.
+- **Mise à jour en direct** : `notify` avec `notify-debouncer-full` (événements regroupés après 1,5 s de calme, sans le cache d'identifiants de fichiers qui reparcourrait tout l'arbre sous Windows). Les changements vont dans un petit index en mémoire (entrées supprimées, chemins ajoutés, nouveaux dossiers parcourus avec leur contenu) ; au-delà de 20 000 changements ou de 5 000 chemins d'un coup, un nouveau scan réécrit l'index. Mesuré : 200 fichiers écrits d'un coup = 2 réveils. Sous Windows, une surveillance récursive par racine. Sous Linux, inotify demande une surveillance par dossier : seuls les dossiers indexés sont surveillés (pas les `node_modules` exclus), dans la limite de la moitié de `fs.inotify.max_user_watches` ; au-delà, un message dans les logs, et les dossiers non surveillés sont rescannés quand la fenêtre s'affiche, au plus tous les quarts d'heure (pas de minuterie fenêtre cachée).
+- **Mode batterie** (`resources.pause_on_battery`, activé par défaut) : sur batterie, les changements sont mis de côté et les scans reportés ; tout est rattrapé à l'affichage suivant sur secteur. La recherche marche avec l'index existant. « Réindexer » (icône de notification) force un scan même sur batterie. L'état de l'alimentation est lu quand quelque chose arrive (changement de fichier, affichage), jamais en boucle.
+- **Icônes** : celles du système, par type de fichier (icône shell sous Windows, icône du type MIME dans le thème sous Linux, d'après `shared-mime-info`), chargées en arrière-plan et gardées en cache ; l'icône intégrée de Flair s'affiche en attendant, la vraie à la frappe suivante.
+- **Statistiques** (`flair --stats`) : taille de l'index (fichier / mémoire hors fichier), nombre d'entrées, dossiers surveillés ; les rafales de changements de fichiers comptent dans les réveils.
 
 ## Calculatrice
 
@@ -23,16 +39,19 @@ On tape un calcul, en français, en anglais ou en mélangeant les deux : `15% de
 - **Fichiers de langue** : [`lexicon/`](lexicon/README.md) (`common.toml`, `fr.toml`, `en.toml`), intégrés au binaire. Ajouter une langue = ajouter un fichier. On peut ajouter ou remplacer des fichiers dans le dossier `lexicon/` de la configuration (relus quand la configuration est rechargée ; un fichier invalide est ignoré, la raison est dans les logs). Désactiver une langue dans `input_languages` désactive vraiment ses mots : avec `["fr"]` seul, `5 km to miles` n'est plus un calcul.
 - **Nombres** : séparateurs de milliers (`1 500`, `1'000'000`, `1_000`, `1,000,000`, espaces insécables), virgule décimale selon `decimal_separator` (en `auto`, `1,500` suit la langue du système et l'autre lecture est proposée en variante), notation scientifique au-delà de 15 chiffres, `significant_digits` chiffres significatifs pour les valeurs approchées.
 - **Durées et heures** : `5h36 + 65min` = `6h41` (variantes `6:41`, `401 min`, `6.683 h`), `1h45 * 3`, `3h45 en min`, `2.5 h en h:min` = `2h30`, `10000 s en h:min:s` = `2h46m40s`, `2:45:10`. Heures de la journée : `14:30 + 2h45` = `17h15`, `23h + 3h` = `2h (lendemain)`. En anglais : `6h 41m`, `2:00 (next day)`.
-- **Dates** (évaluateur dédié, `jiff`) : `26/11/2026 + 45 jours` = `10 janvier 2027 (dimanche)`, différences (`25/12/2026 - 26/11/2026` = `29 jours`), `jours jusqu'au 25 décembre`, `semaines depuis le 1er janvier`, `quel jour 14 juillet 1789`, `maintenant + 3h`, `dans 90 min`, `il y a 2h`, `demain + 1 semaine`, et leurs équivalents anglais (`days until December 25`, `2h ago`…). `jj/mm/aaaa` ou `mm/jj/aaaa` selon `date_format` (en `auto`, la convention de la langue), ISO `aaaa-mm-jj` toujours. Le résultat affiche le mois en lettres et le jour de la semaine ; les formes numériques et ISO sont en variantes. L'heure courante est injectée (trait `Clock`) : les tests sont déterministes.
-- **Unix et fuseaux** : `@1700000000` = `14/11/2023 22:13:20 UTC` (heure locale en variante), `maintenant en unix`, `heure à Tokyo` / `time in Tokyo`, `15h Tokyo en Paris`. Les villes sont cherchées dans la base des fuseaux (système sous Linux, intégrée au binaire sous Windows) ; les noms français qui diffèrent (`Londres`, `Pékin`, `Moscou`…) sont dans `fr.toml`.
+- **Dates** (évaluateur dédié, `jiff`) : `26/11/2026 + 45 jours` = `10 janvier 2027 (dimanche)`, différences (`25/12/2026 - 26/11/2026` = `29 jours`), `jours jusqu'au 25 décembre`, `semaines depuis le 1er janvier`, `quel jour 14 juillet 1789`, `maintenant + 3h` (ou `3h + maintenant`), `dans 90 min`, `il y a 2h`, `3 jours plus tard`, `demain + 1 semaine`, `demain à 14h`, `dans 3 jours à 14h`, `lundi prochain`, `vendredi dernier`, `de 9h à 17h30` = `8h30`, et leurs équivalents anglais (`days until December 25`, `2h ago`, `3 days from now`, `tomorrow at 3pm`, `next Monday`, `from 9am to 5pm`…). Compter dans une unité : `années depuis 1999` = `27 ans`, `âge 14/07/1990`, `mois depuis janvier 2020`, `heures jusqu'à 18h`, `secondes jusqu'à minuit`, `temps jusqu'à 18h`, `jusqu'à vendredi`. Fêtes sans année : `jours jusqu'à noël`, `quel jour pâques`, nouvel an, Saint-Valentin, Halloween… Seuls : `maintenant`, `demain`, `quel jour sommes-nous`. `jj/mm/aaaa` ou `mm/jj/aaaa` selon `date_format` (en `auto`, la convention de la langue), ISO `aaaa-mm-jj` toujours. Le résultat affiche le mois en lettres et le jour de la semaine ; les formes numériques et ISO sont en variantes. L'heure courante est injectée (trait `Clock`) : les tests sont déterministes.
+- **Unix et fuseaux** : `@1700000000` = `14/11/2023 22:13:20 UTC` (heure locale en variante), `maintenant en unix`, `unix 1700000000`, `heure à Tokyo` / `time in Tokyo`, `heure au Japon`, `now in UTC`, `heure à Tokyo en Paris` / `now Tokyo to Paris` (avec `Tokyo 22h12 → Paris 14h12` en variante), `15h Tokyo en Paris`, `3pm Tokyo` (vers l'heure locale), `9am PST to Paris`, `midi Tokyo en Paris`. Abréviations (`PST`, `EST`, `CET`, `JST`…) et pays d'un seul fuseau (`Japon`, `Chine`, `Inde`, `UK`…). Les villes sont cherchées dans la base des fuseaux (système sous Linux, intégrée au binaire sous Windows) ; les noms français qui diffèrent (`Londres`, `Pékin`, `Moscou`…) sont dans `fr.toml`.
 - **Transferts** : `4 Go à 100 Mbit/s` = `5 min 20 s`, `1.5 To à 250 Mo/s` = `1h40` (`a` sans accent accepté entre une quantité et un débit).
 - **Bases et bit à bit** : `0xff & 0x0f`, `5 xor 3`, `6 | 3`, `1 << 4`, `not 5` / `~5` (complément à deux), `42 en base 36` ; le résultat est affiché en décimal avec ses formes hexadécimale, binaire et octale en variantes.
 - **Devises** (`currency = true` dans la config, désactivé par défaut) : `100 € en $`, `50 usd en eur`, `20 livres sterling en francs suisses`. Taux de la BCE via [Frankfurter](https://www.frankfurter.app) (gratuit, sans clé), récupérés en arrière-plan au démarrage, mis en cache (`rates.json` dans le dossier de cache) et rafraîchis au plus toutes les 6 heures ; hors ligne, le cache sert. La date des taux s'affiche en variante. Seule requête réseau de la calculatrice, sans aucune information sur l'utilisateur.
 - **Historique** : chaque calcul copié est enregistré (`history.json`, `calc.history_size` entrées, inclus dans les exports `.flair`) ; `=` seul les affiche, recalculés.
 - **Pendant la frappe** : une saisie qui ne calcule pas encore (`5h36 +`) garde le dernier résultat valide, en grisé.
+- **Surfaces et volumes** : `1 ha en m²`, `100 m2 en pieds carrés`, `20 mètres carrés`, `2 cm3 en ml`, `square feet`, `cubic meters` ; résultat affiché `m²`. Aussi `5'11" en cm`, `1m80 en pieds`, `100 c to f`.
+- **Formulations** : `combien font 2 + 2`, `what is 15% of 80`, `la moitié de 50`, `le double de 21`, `un tiers de 90`, `est-ce que 17 est premier`, `is 17 prime` ; fonctions `max`, `min`, `moyenne`/`avg`, `somme`/`sum` (`max(1 km, 900 m)` compare avec les unités) ; `10 % 3` est un modulo ; `0xff` ou `1e3` seuls sont convertis en décimal.
+- **Erreurs** : `1/0` affiche « Division par zéro impossible » (« Cannot divide by zero »), `log(0)` ou `tan(90)` « Non défini ».
 - **Robustesse** : 50 ms au plus pour toutes les lectures d'une saisie ; au-delà (`10^10^10^10`, `1000000!`), « Trop grand pour être calculé ». Évaluation hors du thread de l'interface, annulée à chaque frappe.
 - **Ce que Flair ajoute à fend-core** (vérifié avant de coder) : les unités `kbit`/`Mbit`/`Gbit` et `Kibit`/`Mibit`, `Mbps`, les octets français (`Ko`, `Mo`, `Go`, `Kio`…, `Mo` étant le mois pour fend) ; `gcd`/`pgcd`, `lcm`/`ppcm`, test de primalité (Miller-Rabin) et forme fonction de `nCr(n; k)`/`nPr` ; l'ajout et le retrait de pourcentages (`240 + 15%` = 276, fend donne 240,15) ; le regroupement des quantités (`100 km / 1.5h`, que fend lit `(100 km / 1.5) × h`) ; `5 ft 11 in` et `5 pieds 11` additionnés ; les degrés par défaut en trigonométrie (`angle_unit`) ; `kWh` pour une puissance multipliée par une durée (fend répond en joules) ; `x` et `·` pour multiplier ; les préfixes `0x`/`0b`/`0o` des conversions de base ; l'arrondi aux chiffres significatifs et la notation scientifique en sortie.
-- **Tests** : `lexicon/tests/{common,fr,en}.toml`, environ 230 cas exécutés avec chaque combinaison de langues (`fr`, `en`, `fr`+`en`, `en`+`fr`) et dans les deux langues d'interface ; chaque cas français a son jumeau anglais au même résultat ; tests de propriétés (`proptest`) : aucune saisie ne fait paniquer le moteur.
+- **Tests** : `lexicon/tests/{common,fr,en}.toml`, environ 400 cas exécutés avec chaque combinaison de langues (`fr`, `en`, `fr`+`en`, `en`+`fr`) et dans les deux langues d'interface ; chaque cas français a son jumeau anglais au même résultat ; tests de propriétés (`proptest`) : aucune saisie ne fait paniquer le moteur.
 
 ## Installer
 
@@ -99,34 +118,54 @@ Flair tourne en permanence en arrière-plan ; la fenêtre est cachée et réaffi
 | `flair --uninstall` | Affiche l'écran de désinstallation |
 | `flair --version` | Version, commit, date de compilation et canal |
 
-### Commandes `>` disponibles
+### Commandes `>`
+
+Tout ce qui se règle dans `config.toml` se règle aussi depuis Flair. `>` seul affiche les commandes les plus utiles et `> help` / `> aide` en dernier ; `> help` les liste **toutes** par catégorie (Réglages, Apparence, Langues, Recherche et fichiers, Web, Calcul, Système, Flair), avec une description et un exemple ; `> help fich` filtre ; `Entrée` sur une commande affiche sa syntaxe, `Tab` l'écrit dans le champ. L'aide est générée depuis le catalogue des commandes, les fichiers de langue et le registre des réglages (un test vérifie que chaque commande a un titre, une description et un exemple dans les deux langues, et des mots dans chaque langue).
+
+**Mots des commandes** : dans les fichiers de langue (`[commands]`, `[arguments]` de `lexicon/fr.toml`, `en.toml`), ils suivent donc les langues actives : avec le français désactivé, `> verrouiller` n'est plus reconnu, `> lock` l'est. `> help` / `> aide`, `> config` et `> langue` / `> language` sont aussi dans `common.toml` et marchent toujours (on peut toujours réactiver une langue). Accents et casse ignorés ; la forme la plus longue l'emporte (`> redémarrer flair` avant `> redémarrer`). **Autocomplétion** : `> con`, `> config the`, `> config theme.mode ` proposent les commandes, les réglages puis les valeurs ; `Tab` complète.
 
 | Commande (FR / EN) | Effet |
 |---|---|
-| `> mise à jour` / `> update` | Cherche la dernière version du canal ; `Entrée` l'installe |
-| `> mise à jour annuler` / `> update rollback` | Revient à la version précédente (conservée sur le disque) |
-| `> mise à jour canal stable` / `> update channel main` | Change de canal |
-| `> version` | Version, commit, date et canal |
-| `> statistiques` / `> stats` | Mémoire, réveils, temps du dernier affichage, moteur de rendu |
-| `> exporter` / `> export` | « Tout » ou « Réglages seulement », puis boîte « Enregistrer sous » |
-| `> importer` / `> import` | « Choisir un fichier… » ou une sauvegarde automatique, résumé, puis « Tout remplacer » ou « Ajouter les thèmes et lexiques » |
-| `> annuler` / `> undo` | Revient à l'état d'avant le dernier import |
-| `> installer` / `> install` | En mode portable : installer Flair |
-| `> désinstaller` / `> uninstall` | Désinstaller |
-| `> quitter` / `> quit` | Fermer Flair |
+| `> config` / `> réglages` / `> settings` | Tous les réglages avec leur valeur, leur défaut s'il diffère et les valeurs permises ; filtre flou sur la clé, le nom et les alias des deux langues (`> config transp` → `theme.opacity`). `Entrée` bascule un booléen, liste les choix d'une liste de valeurs, ou écrit `> config <réglage> <valeur actuelle>` prêt à modifier |
+| `> config <réglage> <valeur>` | `> config max_results 10`, `> config transparence 0.9`, `> config calc.angle_unit rad` ; `défaut` / `reset` remet la valeur par défaut ; listes : `ajouter` / `add`, `retirer` / `remove` |
+| `> config ouvrir` / `open`, `> config recharger` / `reload` | Ouvre le fichier dans l'éditeur par défaut, le relit |
+| `> annuler` / `> undo` | Annule le dernier changement de réglage fait par commande, sinon le dernier import |
+| `> transparence 0.9`, `> raccourci Ctrl+Espace`, `> démarrage on`, `> résultats 10`, `> icônes mono`, `> rendu cpu` | Raccourcis vers un réglage (`opacity`, `hotkey`, `autostart`, `results`, `icons`, `renderer`) |
+| `> fichiers` / `> files` | `ajouter D:\Projets`, `exclure .venv`, `cachés on`, `retirer …` ; seul : les réglages des fichiers |
+| `> web` | Liste les moteurs (`Entrée` : chercher avec) ; `> web ajouter yt YouTube https://www.youtube.com/results?search_query={query}` ; `> web retirer yt` |
+| `> calcul` / `> calc` | `angle rad`, `chiffres 15`, `devises on`, `octets binaire` |
+| `> batterie pause on` / `> battery pause off` | Pause de l'indexation sur batterie |
+| `> langue` / `> language` | Langues de saisie avec leur état et leur ordre (`Entrée` active ou désactive), et la langue de l'interface ; `> langue fr désactiver`, `> language en prefer`, `> langue interface en`. Désactiver la dernière langue active est refusé |
+| `> verrouiller` / `> lock`, `> veille` / `> sleep`, `> éteindre` / `> shutdown`, `> redémarrer` / `> restart`, `> se déconnecter` / `> log out`, `> vider la corbeille` / `> empty trash` | Commandes système (aussi trouvées sans `>` : taper `verrouiller` suffit). Éteindre, redémarrer, se déconnecter et vider la corbeille demandent un **second `Entrée`** |
+| `> réindexer` / `> reindex` | Reparcourt les applications et les fichiers |
+| `> historique effacer` / `> history clear` | Efface l'historique des calculs et la frecency (second `Entrée`) |
+| `> statistiques` / `> stats`, `> journaux` / `> logs` | Statistiques ; ouvre le dossier des journaux |
+| `> mise à jour` / `> update` (+ `annuler` / `rollback`, `canal stable`) | Mise à jour, retour à la version précédente, canal |
+| `> exporter` / `> export`, `> importer` / `> import` | Fichier `.flair` (voir plus bas) |
+| `> redémarrer flair` / `> restart flair` | Relance Flair (proposé après un réglage appliqué au démarrage : `log_level`, `resources.renderer`) |
+| `> version`, `> installer` / `> install` (mode portable), `> désinstaller` / `> uninstall`, `> quitter` / `> quit` | |
 
-Le système de commandes complet (`> config`, `> help`, mots dans les fichiers de langue) arrive au jalon 7.
+**Règles communes** :
+- **Validation avant écriture**, avec les règles du fichier : une valeur invalide affiche la raison dans la ligne (« doit être entre 1 et 20 ») et rien n'est écrit.
+- **Écriture avec `toml_edit`**, commentaires et mise en forme gardés, puis application immédiate. Les moteurs web sont réécrits en blocs `[[web]]`.
+- **Aperçu en direct** des réglages d'apparence (`theme.opacity`, `theme.mode`, `theme.light`, `theme.dark`) : la ligne sélectionnée s'applique pendant qu'on navigue ; `Entrée` la garde, `Échap` ou une autre saisie revient en arrière.
+- **Raccourci global** : le nouveau est enregistré d'abord ; refusé (déjà pris, Wayland), l'ancien reste et la raison s'affiche.
+- **Lancement au démarrage** : l'entrée du système (registre `Run`, fichier `autostart`) est changée en même temps que le réglage.
+
+**Recherche web** : chaque moteur de `[[web]]` a un mot-clé (par défaut `g` Google, `ddg` DuckDuckGo, `wiki` Wikipédia, `yt` YouTube : `g rust iced`, `yt lofi`) ; `?` cherche avec tous les moteurs (`? rust` ; `?yt lofi` avec un seul) ; sans préfixe, « Rechercher « … » sur le web » (premier moteur de la liste) est toujours proposé en dernier. La requête est encodée en UTF-8 (`été & co` → `%C3%A9t%C3%A9+%26+co`).
+
+**Commandes système** : Windows : `LockWorkStation`, `SetSuspendState`, `ExitWindowsEx` (avec le privilège d'arrêt activé pour éteindre et redémarrer), `SHEmptyRecycleBinW`. Linux : `loginctl lock-session` / `terminate-session`, `systemctl suspend` / `poweroff` / `reboot` (logind, autorisé à l'utilisateur de la session locale active par les règles polkit par défaut), corbeille vidée selon la spécification freedesktop (`~/.local/share/Trash`). Pas de `zbus` ni de crate `trash` : les outils de systemd parlent déjà à logind, et vider la corbeille du dossier personnel tient en quelques lignes.
 
 Une seule instance tourne à la fois : un second `flair` envoie sa commande à l'instance existante (named pipe sous Windows, socket Unix abstraite sous Linux, crate `interprocess`) puis quitte.
 
 **Raccourci global** (`hotkey`, `Alt+Space` par défaut) :
 - Windows : `global-hotkey` (`RegisterHotKey`) ;
 - X11 : implémentation propre avec `x11rb` (`XGrabKey` sur la fenêtre racine, thread bloqué sur la connexion X). La crate `global-hotkey` n'est **pas** utilisée sous X11 : sa boucle interroge le serveur X toutes les 50 ms, soit 20 réveils par seconde en permanence ;
-- Wayland : impossible sans le portail GlobalShortcuts (jalon 8). Au premier lancement, Flair explique comment lier un raccourci du bureau à `flair --toggle`.
+- Wayland : portail XDG GlobalShortcuts (`zbus`) quand le bureau le fournit ; sinon, au premier lancement, Flair explique comment lier un raccourci du bureau à `flair --toggle`.
 
 Si le raccourci est déjà pris par une autre application, Flair démarre quand même et l'explique dans sa fenêtre (`Entrée` ouvre la configuration).
 
-**Icône de notification** : Afficher, Réindexer (applications ; les fichiers au jalon 6), Ouvrir la configuration, Rechercher une mise à jour (jalon 3), Lancer au démarrage, Statistiques, Quitter. Un clic gauche affiche ou cache la fenêtre. L'icône est le logo rendu à l'exécution (`resvg`) dans la couleur de la barre des tâches (`SystemUsesLightTheme` sous Windows).
+**Icône de notification** : Afficher, Réindexer (applications et fichiers), Ouvrir la configuration, Rechercher une mise à jour (jalon 3), Lancer au démarrage, Statistiques, Quitter. Un clic gauche affiche ou cache la fenêtre. L'icône est le logo rendu à l'exécution (`resvg`) dans la couleur de la barre des tâches (`SystemUsesLightTheme` sous Windows).
 - Windows : `tray-icon` ;
 - Linux : StatusNotifierItem via `ksni` sur un runtime Tokio d'un seul thread. Le backend KSNI de `tray-icon` impose la pile `async-io`, dont le pool `blocking` garde un thread qui se réveille toutes les 500 ms pour toujours : rejeté pour la même raison que ci-dessus. Sous GNOME, l'icône demande l'extension « AppIndicator ».
 
@@ -162,6 +201,26 @@ Un `.flair` n'est pas fiable par défaut : seuls les chemins attendus sont lus, 
 
 Sauvegardes automatiques (avant une mise à jour, un import, une migration ou une réinitialisation) : même format, dans `backups/` du dossier de données, 10 conservées.
 
+## Thèmes
+
+Un thème, c'est 3 couleurs (fond, texte, accent) ; toutes les autres couleurs en sont dérivées avec des contrastes garantis (voir « Organisation »). Deux thèmes intégrés, **Flair clair** et **Flair sombre** ; les autres sont des fichiers `themes/*.toml` du dossier de configuration (`%AppData%\Flair\themes\`, `~/.config/flair/themes/`) :
+
+```toml
+name = "Lavande"
+background = "#1E1B2E"
+foreground = "#E6E1F5"
+accent = "#B79CFF"      # facultatif : sans accent, les lettres trouvées sont seulement en semi-gras
+```
+
+- **`> thème` / `> theme`** liste les thèmes ; **naviguer applique le thème en aperçu**, `Entrée` le garde, `Échap` revient en arrière. Un thème va dans l'emplacement clair ou sombre (`theme.light` / `theme.dark`) selon son fond ; si le mode est forcé sur l'autre type, il bascule.
+- **`> thème 1E1B2E E6E1F5 B79CFF lavande`** crée un thème à partir de 3 couleurs (fond, texte, accent ; `#` facultatif, `#RGB` accepté) et l'affiche aussitôt en aperçu, avec « contraste ajusté » si des couleurs ont dû être corrigées (`> thème 777777 888888 808080` reste lisible). `Entrée` enregistre `themes/lavande.toml` et l'applique. Sans nom : `perso-1`, `perso-2`…
+- **Mode `system`** (par défaut) : Flair suit le thème clair ou sombre du système **en direct**, sans redémarrage. Windows : valeur `AppsUseLightTheme`, surveillée par `RegNotifyChangeKeyValue` (thread bloqué jusqu'au changement). Linux : portail XDG Settings (`org.freedesktop.appearance` / `color-scheme`, signal `SettingChanged`, par `zbus` déjà présent pour l'icône de notification), avec `gsettings` en secours au démarrage. L'icône de notification change de couleur avec.
+- Un fichier de thème invalide est ignoré avec un message (`> ` affiche la raison quand le champ est vide) ; il ne casse jamais le thème actif.
+
+## Rechargement à chaud
+
+Le dossier de configuration est surveillé (`notify`) : modifier `config.toml`, un thème ou un fichier de langue s'applique en quelques centaines de millisecondes, sans redémarrage. Une rafale d'écritures donne un seul rechargement ; le thread dort jusqu'au changement. Une erreur de syntaxe garde la dernière configuration valide et affiche l'erreur.
+
 ## Moteur de rendu
 
 `resources.renderer = "auto" | "gpu" | "cpu"`. **`auto` choisit le rendu logiciel** (`tiny-skia`), d'après les mesures :
@@ -182,11 +241,28 @@ Mesuré sous WSLg (Wayland et X11 via XWayland, rendu logiciel), build release :
 | Affichage de la fenêtre (raccourci → première image) | X11 : 2,6 à 4,4 ms (fenêtre gardée chaude) ; Wayland : 12 à 15 ms (fenêtre recréée) | < 50 ms |
 | Premier affichage au lancement (démarrage du processus compris) | 17 à 20 ms | — |
 | RAM fenêtre cachée, sans index | 24 Mo | < 40 Mo |
-| Réveils en 30 s fenêtre cachée (compteur interne) | 0 | 0 |
+| Réveils en 30 s fenêtre cachée (compteur interne) | 0, index de fichiers et surveillance actifs | 0 |
+| 200 fichiers écrits d'un coup dans un dossier surveillé | 2 réveils | une poignée |
 | Changements de contexte en 30 s, tous threads confondus | 0 | 0 |
 | Temps CPU consommé en 30 s fenêtre cachée | 0 | 0 |
 
 Le compteur de réveils (`flair --stats`) compte chaque événement traité : fenêtre, clavier, souris, raccourci, menu, IPC. Interroger `--stats` ne compte pas comme un réveil.
+
+**Mémoire rendue quand Flair est caché** : `resources.trim_memory_after` secondes après le masquage (5 par défaut, 0 = jamais), un seul réveil différé (annulé si Flair réapparaît avant) vide les caches temporaires (images des icônes envoyées au moteur de rendu, derniers résultats), puis :
+- Windows : **mode efficacité** (EcoQoS, `SetProcessInformation` / `ProcessPowerThrottling`, si `resources.efficiency_mode`) et `EmptyWorkingSet` : les pages passent dans la liste d'attente du système, libres pour les autres programmes et relues depuis la RAM (pas le disque) au prochain affichage. Le mode efficacité est coupé dès que la fenêtre s'affiche ;
+- Linux : `malloc_trim(0)` (glibc) rend au système la mémoire libérée.
+
+L'index de fichiers est déjà hors du tas (fichier mappé) : le système reprend ses pages tout seul.
+
+**Benchmarks** (`cargo bench -p flair-providers`, `criterion`) : mesurés sous WSL2, build release :
+
+| Opération | Temps | Objectif |
+|---|---|---|
+| Calcul : `15% de 240`, `26/11/2026 + 45 jours`, `heure à Tokyo en Paris` | 6 à 18 µs | < 16 ms |
+| Calcul avec unités ou fonctions : `5 km en miles`, `5h36 + 65min`, `sin(pi/6) + sqrt(2)` | 0,14 à 0,19 ms | < 16 ms |
+| Saisie qui n'est pas un calcul (`firefox`) | 0,6 µs | — |
+| Classement de 500 applications (`vsc`) | 6 µs | < 16 ms |
+| Fichiers : recherche dans un index d'un million d'entrées (moitié de noms accentués) | 11 à 19 ms | < 50 ms |
 
 **Vérifier soi-même** :
 - Linux : `pidstat -w -t -p $(pgrep -x flair) 5` (aucun `cswch/s` quand Flair est caché), `powertop` (Flair absent de la liste des réveils), et `flair --stats` à une heure d'écart ;
@@ -200,14 +276,14 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-La CI (GitHub Actions, `.github/workflows/ci.yml`) lance `fmt`, `clippy` et `test` sur `ubuntu-latest` et `windows-latest`.
+La CI (GitHub Actions, `.github/workflows/ci.yml`) lance `fmt`, `clippy`, `test`, la compilation des benchmarks et `flair lexicon check` sur `ubuntu-latest` et `windows-latest` ; `release.yml` publie une version signée à chaque push sur `main` dont les tests passent.
 
 ## Organisation
 
 ```
 crates/
 ├── flair-core/       types, trait Provider, registre des réglages, config, thèmes, i18n (sans UI)
-├── flair-providers/  sources de résultats : applications, calculatrice (fichiers, web, système à venir)
+├── flair-providers/  sources de résultats : applications, calculatrice, fichiers (web, système à venir)
 ├── flair-platform/   code propre à l'OS : chemins, raccourci global, icône de notification, IPC,
 │                     démarrage auto, mémoire, écran sous la souris (seul crate avec `unsafe`)
 └── flair-app/        binaire `flair` : interface Iced, logs, lancement
@@ -283,19 +359,22 @@ Réglages (table générée depuis le registre, `UPDATE_README=1 cargo test -p f
 
 ## Limitations connues
 
-- **Position** : sous Windows, la fenêtre apparaît sur l'écran sous la souris. Sous Linux, elle reste sur l'écran principal (X11 : à faire ; Wayland : impossible sans layer-shell, jalon 8).
-- **Mots des commandes `>`** : en attendant le jalon 7, les mots français et anglais des quelques commandes existantes sont dans le code (`commands.rs`), pas encore dans les fichiers de langue.
+- **Position** : sous Windows, la fenêtre apparaît sur l'écran sous la souris. Sous Linux, elle reste sur l'écran principal (X11 : à faire ; Wayland : impossible sans layer-shell).
+- **layer-shell (Wayland)** : non fait. Iced 0.14 crée ses fenêtres avec winit, qui ne gère pas le protocole `wlr-layer-shell` ; il faudrait remplacer la boucle d'Iced par [`iced_layershell`](https://github.com/waycrate/exwlshelleventloop) sous Wayland, un autre runtime à maintenir en parallèle. Proposition : le faire quand Iced l'intégrera, ou comme une option expérimentale ensuite. En attendant, sous Wayland la fenêtre est une fenêtre normale (barre des tâches, position choisie par le compositeur).
+- **Raccourci global sous Wayland** : par le portail XDG GlobalShortcuts quand le bureau le fournit (GNOME 48+, KDE Plasma 5.27+, Hyprland…) ; le bureau peut demander une confirmation et laisser choisir une autre touche. Sans portail (WSLg, anciens bureaux), Flair explique comment lier un raccourci du bureau à `flair --toggle`. Le portail n'a pas pu être essayé ici (WSLg n'en a pas) : à vérifier sur un vrai bureau.
+- **Commandes `>`** : les valeurs des listes de choix (`dark`, `rad`…) s'écrivent telles quelles, sans traduction.
 - **Progression de mise à jour** : affichée dans la fenêtre ; pas encore dans l'infobulle de l'icône de notification.
 - **Icônes Linux** : seule l'icône vectorielle (`hicolor/scalable`) est installée, pas encore les PNG 16 à 256 px.
 - **Wayland, masquage** : winit ne sait pas cacher une fenêtre sous Wayland. Flair la ferme et en ouvre une nouvelle à l'affichage suivant (12 à 15 ms mesurés). Sans portail XDG (WSLg), le premier affichage attend 100 ms un portail qui ne répond pas (`sctk_adwaita`, imposé par Iced).
-- **Fenêtre Linux** : elle apparaît dans la barre des tâches sous Linux (Iced n'expose pas cet attribut) ; layer-shell (jalon 8) réglera ça sur KDE et wlroots.
+- **Fenêtre Linux** : elle apparaît dans la barre des tâches sous Linux (Iced n'expose pas cet attribut ; voir layer-shell).
 - **Wayland, hauteur de la fenêtre** : winit applique un redimensionnement demandé par l'application sans envoyer d'événement `Resized`, et Iced ne refait alors pas sa mise en page. Sous Wayland, la fenêtre transparente garde donc sa hauteur maximale et seul le cadre visible change de taille. Sous Windows et X11, la fenêtre est redimensionnée normalement.
 - **Ombre** : seulement celle du système (DWM sous Windows, avec les coins arrondis). Flair ne dessine pas d'ombre lui-même : le rendu logiciel d'Iced ne redessine que le contour d'un rectangle, pas son ombre, qui se repeignait sur elle-même jusqu'à devenir noire.
 - **Curseur du champ** : Iced 0.14 dessine le curseur avec la couleur du texte. La spec le veut en couleur d'accent, ce qui demande un petit widget dédié (à faire).
 - **Premier affichage après le démarrage** : les applications sont indexées en arrière-plan (environ 1 à 2 s sous Windows, icônes comprises). Une recherche tapée avant la fin ne les trouve pas encore ; une recherche déjà affichée ne se met pas à jour quand une icône arrive.
 - **Nouvelles applications du Store** : les raccourcis sont surveillés, pas le dossier `shell:AppsFolder`. Une application du Store installée pendant que Flair tourne apparaît après « Réindexer » ou au prochain démarrage.
-- **Calculatrice** : pas de cryptomonnaies (`1 btc en €`) ; les heures de la journée sont reconnues dans un calcul (`23h + 3h`), pas seules ; un `14h30` sans opération reste une durée. Les dates sans année (`25 décembre`) prennent la prochaine occurrence avec « jusqu'au » et la dernière avec « depuis ».
+- **Calculatrice** : pas de cryptomonnaies (`1 btc en €`) ; les heures de la journée sont reconnues dans un calcul (`23h + 3h`), pas seules ; un `14h30` sans opération reste une durée. Les dates sans année (`25 décembre`, `noël`) prennent la prochaine occurrence, et la dernière avec « depuis ». Un mois seul (`Mars 2020`) n'est pas lu comme une date, sauf après « depuis », « jusqu'à » ou « quel jour ». `1 an en jours` donne l'année moyenne de fend (365,24 jours).
 - **Icônes Linux** : les icônes XPM (anciennes applications) ne sont pas lues ; l'icône générique les remplace.
+- **Fichiers** : pas encore de lecture de la MFT / du journal USN NTFS (indexation façon *Everything*) ; l'architecture le permet (un autre producteur pour le même index). Sous Linux, `other_drives` ne fait rien : les disques montés sont des dossiers de l'arbre, à ajouter dans `files.roots`. La recherche porte sur le nom, pas sur le chemin complet (`projets rapport` ne trouve pas `Projets/rapport.md`). Une icône de type qui arrive ne met pas à jour la liste déjà affichée.
 
 ## Développement
 

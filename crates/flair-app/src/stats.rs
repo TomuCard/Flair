@@ -20,6 +20,12 @@ static VISIBLE: AtomicBool = AtomicBool::new(false);
 static TRAY: AtomicBool = AtomicBool::new(false);
 static HOTKEY: Mutex<String> = Mutex::new(String::new());
 static STARTED: OnceLock<Instant> = OnceLock::new();
+/// The file index, for its figures.
+static FILES: OnceLock<flair_providers::files::FilesProvider> = OnceLock::new();
+
+pub fn set_files(files: flair_providers::files::FilesProvider) {
+    let _ = FILES.set(files);
+}
 
 pub fn mark_started(at: Instant) {
     let _ = STARTED.set(at);
@@ -76,18 +82,25 @@ pub struct Snapshot {
 
 pub fn snapshot() -> Snapshot {
     let last_show = LAST_SHOW_US.load(Ordering::Relaxed);
+    let files = FILES
+        .get()
+        .map(flair_providers::files::FilesProvider::stats);
     #[allow(clippy::cast_precision_loss)]
     Snapshot {
         version: crate::build_info::VERSION.into(),
         uptime_s: STARTED.get().map_or(0, |s| s.elapsed().as_secs()),
         ram_bytes: flair_platform::memory::resident_bytes(),
-        wakeups: wakeups(),
+        // File change batches wake Flair up too.
+        wakeups: wakeups() + files.map_or(0, |f| f.events),
         last_show_ms: (last_show > 0).then(|| last_show as f64 / 1000.0),
         renderer: flair_platform::renderer::active_name(),
         visible: VISIBLE.load(Ordering::Relaxed),
         hotkey: HOTKEY.lock().map(|h| h.clone()).unwrap_or_default(),
         tray: TRAY.load(Ordering::Relaxed),
-        ..Snapshot::default()
+        index_file_bytes: files.map(|f| f.file_bytes),
+        index_ram_bytes: files.map(|f| f.ram_bytes),
+        index_entries: files.map(|f| f.entries),
+        watched_folders: files.map(|f| f.watched),
     }
 }
 

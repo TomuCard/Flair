@@ -94,6 +94,16 @@ impl Frecency {
         }
     }
 
+    /// Forgets everything (`> history clear`), file included.
+    pub fn clear(&mut self) {
+        self.entries.clear();
+        if let Some(file) = &self.file
+            && let Err(e) = crate::archive::write_atomic(file, b"{}")
+        {
+            tracing::warn!(error = %e, "cannot clear the launch history");
+        }
+    }
+
     fn prune(&mut self, now: u64) {
         if self.entries.len() <= MAX_ENTRIES {
             return;

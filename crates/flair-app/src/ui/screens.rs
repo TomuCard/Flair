@@ -9,7 +9,7 @@ use flair_core::archive::{self, Archive, ImportMode, Warning};
 use flair_core::result::BuiltinIcon;
 use flair_core::settings::config::UpdateChannel;
 use flair_core::update::{Decision, decide};
-use flair_core::{Action, ResultItem};
+use flair_core::{Action, Provider, ResultItem};
 use iced::Task;
 use iced::futures::channel::{mpsc, oneshot};
 
@@ -370,7 +370,56 @@ impl Flair {
             "import:pick" => self.pick_import(),
             "import:replace" => self.apply_import(ImportMode::ReplaceAll),
             "import:merge" => self.apply_import(ImportMode::AddThemesAndLexicons),
-            "undo" => self.undo_import(),
+            "undo" => {
+                if self.last_setting.is_some() {
+                    self.undo_setting()
+                } else {
+                    self.undo_import()
+                }
+            }
+            "reindex" => {
+                if let Some(sources) = &self.sources {
+                    sources.apps.refresh();
+                    sources.files.reindex();
+                }
+                self.say(self.i18n.t("reindex-started"))
+            }
+            "logs" => {
+                let dir = self.paths.log_dir();
+                let _ = std::fs::create_dir_all(&dir);
+                if let Err(e) = flair_platform::open::open_path(&dir) {
+                    tracing::error!("cannot open the logs: {e}");
+                }
+                self.hide()
+            }
+            "history_clear" => {
+                if let Some(sources) = &self.sources {
+                    if let Ok(mut h) = sources.history.lock() {
+                        h.clear();
+                    }
+                    if let Ok(mut f) = sources.frecency.lock() {
+                        f.clear();
+                    }
+                }
+                self.say(self.i18n.t("history-cleared"))
+            }
+            "restart_flair" => match self.exe() {
+                Some(exe) => match updater::restart(&exe, "--show") {
+                    Ok(()) => iced::exit(),
+                    Err(e) => self.say(e.to_string()),
+                },
+                None => Task::none(),
+            },
+            "config:open" => {
+                if let Err(e) = flair_platform::open::open_path(&self.config_path) {
+                    tracing::error!("cannot open the configuration: {e}");
+                }
+                self.hide()
+            }
+            "config:reload" => {
+                self.reload_config();
+                self.say(self.i18n.t("config-reloaded"))
+            }
             "install" => self.set_screen(Some(Screen::Install { autostart: true })),
             "install:autostart" => {
                 if let Some(Screen::Install { autostart }) = self.screen {
@@ -395,6 +444,22 @@ impl Flair {
             "uninstall:all" => self.uninstall(true),
             "quit" => iced::exit(),
             other => {
+                if let Some(name) = other.strip_prefix("theme:use:") {
+                    return self.use_theme(name);
+                }
+                if let Some(theme) = commands::theme::decode_new(other) {
+                    return self.save_theme(&theme);
+                }
+                if let Some(text) = other.strip_prefix("fill:") {
+                    return self.fill(text.to_owned());
+                }
+                if let Some((key, value)) = commands::settings::decode_set(other) {
+                    return self.apply_setting(&key, value);
+                }
+                if let Some(id) = other.strip_prefix("help:") {
+                    let rows = self.with_command_context(|cx| commands::help::detail(id, cx));
+                    return self.message(rows);
+                }
                 if let Some(path) = other.strip_prefix("import:file:") {
                     return self.read_import(PathBuf::from(path));
                 }
@@ -405,6 +470,179 @@ impl Flair {
                 Task::none()
             }
         }
+    }
+
+    /// Writes `text` in the field (commands taking arguments).
+    fn fill(&mut self, text: String) -> Task<Message> {
+        Task::batch([
+            self.search(text),
+            iced::widget::operation::move_cursor_to_end(iced::widget::Id::new(super::INPUT_ID)),
+        ])
+    }
+
+    pub(super) fn with_command_context<R>(&self, f: impl FnOnce(&commands::Context<'_>) -> R) -> R {
+        let cx = commands::Context {
+            i18n: &self.i18n,
+            words: &self.words,
+            config: &self.config,
+            languages: &self.languages,
+            portable: false,
+            update_available: None,
+        };
+        f(&cx)
+    }
+
+    /// Applies a setting chosen in a `>` command: validated, written with its
+    /// comments kept, applied at once, undoable with `> annuler`.
+    fn apply_setting(&mut self, key: &str, value: toml::Value) -> Task<Message> {
+        let Some(desc) = flair_core::settings::registry::find(key) else {
+            return Task::none();
+        };
+        let old = commands::settings::current(&self.config, key);
+        // The new shortcut is registered first: refused, the old one stays.
+        if key == "hotkey"
+            && let Some(text) = value.as_str()
+        {
+            if let Err(e) = self.services.try_hotkey(text) {
+                return self.say(self.i18n.t_args("hotkey-refused", &[("error", &e)]));
+            }
+            text.clone_into(&mut self.config.hotkey);
+        }
+        if key == "autostart"
+            && let Some(enabled) = value.as_bool()
+        {
+            let registered = std::env::current_exe()
+                .and_then(|exe| flair_platform::autostart::set(enabled, &exe));
+            if let Err(e) = registered {
+                return self.say(
+                    self.i18n
+                        .t_args("setting-failed", &[("error", &e.to_string())]),
+                );
+            }
+            if let Some(tray) = &mut self.services.tray {
+                tray.set_autostart_checked(enabled);
+            }
+        }
+        if let Err(e) = flair_core::settings::edit::set_in_file(&self.config_path, key, &value) {
+            let error = match &e {
+                flair_core::settings::edit::EditError::Invalid(v) => self.i18n.value_error(v),
+                other => other.to_string(),
+            };
+            return self.say(self.i18n.t_args("setting-failed", &[("error", &error)]));
+        }
+        tracing::info!(key, value = %value, "setting changed");
+        self.last_setting = Some((key.to_owned(), old));
+        self.reload_config();
+        let shown = self.with_command_context(|cx| commands::settings::display(&value, cx));
+        let name = desc.name.get(self.i18n.lang());
+        let mut rows = vec![info(
+            self.i18n
+                .t_args("setting-applied", &[("name", name), ("value", &shown)]),
+            Some(self.i18n.t("setting-applied-hint")),
+        )];
+        if desc.requires_restart {
+            rows[0].subtitle = Some(self.i18n.t("setting-restart"));
+            rows.push(row(
+                "restart_flair",
+                self.i18n.t("cmd-restart_flair"),
+                Some(self.i18n.t("cmd-restart_flair-desc")),
+                BuiltinIcon::Command,
+            ));
+        }
+        self.message(rows)
+    }
+
+    /// Uses a theme: it goes to the light or dark slot depending on its
+    /// background; a fixed mode of the other kind switches to its kind.
+    fn use_theme(&mut self, name: &str) -> Task<Message> {
+        use flair_core::settings::config::ThemeMode;
+        let Some(theme) = crate::themes::find(name) else {
+            return Task::none();
+        };
+        let light = theme.is_light();
+        let slot = if light { "theme.light" } else { "theme.dark" };
+        let old = commands::settings::current(&self.config, slot);
+        let write = |key: &str, value: &str| {
+            flair_core::settings::edit::set_in_file(
+                &self.config_path,
+                key,
+                &toml::Value::String(value.to_owned()),
+            )
+        };
+        let mut result = write(slot, name);
+        let mode = self.config.theme.mode;
+        if result.is_ok() && mode != ThemeMode::System && (mode == ThemeMode::Light) != light {
+            result = write("theme.mode", if light { "light" } else { "dark" });
+        }
+        if let Err(e) = result {
+            return self.say(
+                self.i18n
+                    .t_args("setting-failed", &[("error", &e.to_string())]),
+            );
+        }
+        self.last_setting = Some((slot.to_owned(), old));
+        self.reload_config();
+        let kind = self
+            .i18n
+            .t(if light { "theme-light" } else { "theme-dark" });
+        self.say(
+            self.i18n
+                .t_args("theme-applied", &[("name", name), ("kind", &kind)]),
+        )
+    }
+
+    /// Saves a theme created by `> thème <colors> <name>`, then uses it.
+    fn save_theme(&mut self, theme: &flair_core::theme::Theme) -> Task<Message> {
+        let dir = self.paths.themes_dir();
+        let file = dir.join(crate::themes::file_name(&theme.name));
+        let written = std::fs::create_dir_all(&dir)
+            .and_then(|()| std::fs::write(&file, crate::themes::to_toml(theme)));
+        if let Err(e) = written {
+            return self.say(
+                self.i18n
+                    .t_args("setting-failed", &[("error", &e.to_string())]),
+            );
+        }
+        tracing::info!(file = %file.display(), "theme saved");
+        crate::themes::reload(&dir);
+        self.use_theme(&theme.name)
+    }
+
+    /// `> annuler` after a setting change.
+    fn undo_setting(&mut self) -> Task<Message> {
+        let Some((key, old)) = self.last_setting.take() else {
+            return self.say(self.i18n.t("undo-nothing"));
+        };
+        let Some(desc) = flair_core::settings::registry::find(&key) else {
+            return Task::none();
+        };
+        let Some(value) = old.or_else(|| desc.default_value()) else {
+            return Task::none();
+        };
+        if key == "hotkey"
+            && let Some(text) = value.as_str()
+        {
+            let _ = self.services.try_hotkey(text);
+            text.clone_into(&mut self.config.hotkey);
+        }
+        if key == "autostart"
+            && let Some(enabled) = value.as_bool()
+        {
+            let _ = std::env::current_exe()
+                .and_then(|exe| flair_platform::autostart::set(enabled, &exe));
+        }
+        if let Err(e) = flair_core::settings::edit::set_in_file(&self.config_path, &key, &value) {
+            return self.say(
+                self.i18n
+                    .t_args("setting-failed", &[("error", &e.to_string())]),
+            );
+        }
+        self.reload_config();
+        let shown = self.with_command_context(|cx| commands::settings::display(&value, cx));
+        self.say(self.i18n.t_args(
+            "setting-undone",
+            &[("name", desc.name.get(self.i18n.lang())), ("value", &shown)],
+        ))
     }
 
     /// Why updates cannot be installed here, if so.

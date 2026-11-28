@@ -52,7 +52,14 @@ and accents (`annee` = `année`, `a` = `à`) unless `case_sensitive = true`.
 | `func:<name>` | a function (`func:sqrt`, `func:gcd`, `func:isprime`) | the function |
 | `const:<name>` | a constant (`const:pi`, `const:boltzmann`) | the constant |
 | `fend:<text>` | any text of the engine's syntax (`fend:hex`, `fend:^2`) | the text |
-| `now`, `ago`, `relative_in`, `until`, `since`, `what_day`, `rate_at`, `time_in`, `month:<1-12>`, `weekday:<1-7>` | dates, times and transfer rates | evaluated from milestone 5 |
+| `now`, `today`, `tomorrow`, `yesterday`, `ago`, `relative_in`, `from_now`, `until`, `since`, `age`, `what_day`, `time_in`, `month:<1-12>`, `weekday:<1-7>` | dates and times (`il y a 2h`, `3 days from now`, `âge 14/07/1990`) | evaluated by the date and time evaluator |
+| `at`, `from` | links of times (`demain à 14h`, `de 9h à 17h30`) | nothing for fend |
+| `next`, `last` | weekday after or before today (`lundi prochain`, `last Friday`) | |
+| `noon`, `midnight` | `12:00`, `0:00` | the time |
+| `holiday:<MM-DD>`, `holiday:easter` | a holiday without year (`noël`, `Easter`): the next one, the last one after `since` | the date |
+| `tz:<zone>` | a time zone of the database (`tz:Asia/Tokyo` for `Japon`, `PST`) | the zone |
+| `unix`, `unix_at` | conversion to a timestamp (`en unix`), a timestamp (`unix 1700000000`) | |
+| `rate_at` | transfer rate (`4 Go à 100 Mbit/s`) | a duration |
 
 ## Conditions (`when`)
 
@@ -69,8 +76,9 @@ that cannot be expressed calls for a new condition in the code, with tests.
 | `case_sensitive = true` | the case must match exactly |
 
 Classes: `number`, `quantity` (a number and its unit), `unit`, `duration`
-(a quantity of time), `time` (time of day), `date`, `percent` (`%`), `start`,
-`end`, and `sense:<name>` (a token that can have this sense, for example
+(a quantity of time), `time` (time of day: `14h`, `3pm`, `14:30`, `midi`),
+`date`, `percent` (`%`), `word` (a word no file knows and that is no unit,
+like a city: `Tokyo`), `start`, `end`, and `sense:<name>` (a token that can have this sense, for example
 `sense:convert_to`). A condition may accept a list: `before = ["end",
 "sense:convert_to"]`.
 

@@ -5,6 +5,7 @@
 mod assets;
 mod build_info;
 mod commands;
+mod config_watch;
 mod design;
 mod external;
 mod lexicon_check;
@@ -266,6 +267,16 @@ fn run(cli: Cli, paths: &Paths, started: Instant) -> anyhow::Result<ExitCode> {
 
     let lang = Lang::resolve(config.ui_language);
     let i18n = Arc::new(I18n::new(lang));
+    themes::reload(&paths.themes_dir());
+    themes::set_system_dark(flair_platform::theme::system_dark());
+    if !dev {
+        // Hot reload of the configuration, themes and language files.
+        config_watch::start(&paths.config_dir);
+        // Mode `system`: Flair switches with the system, live.
+        flair_platform::theme::watch(std::sync::Arc::new(|dark| {
+            external::send(external::External::SystemTheme(dark));
+        }));
+    }
     let theme = themes::active(&config);
     let tokens = theme.tokens();
     tracing::info!(renderer = %renderer::active_name(), theme = %theme.name, ?lang, "ready");

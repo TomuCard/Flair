@@ -147,6 +147,10 @@ pub enum Calculation {
         factor: Option<u64>,
     },
     TooBig,
+    /// `1/0`, `5 mod 0`.
+    DivisionByZero,
+    /// Outside the domain of a function: `log(0)`, `tan(90)`.
+    Undefined,
 }
 
 /// Quick test: worth normalizing? (`firefox` is not, `pi*2` is.) Inputs
@@ -159,6 +163,94 @@ pub fn looks_like_calculation(input: &str) -> bool {
         && input
             .chars()
             .any(|c| c.is_ascii_digit() || "+-*/^()%!×÷√∛π".contains(c))
+}
+
+/// Units written with their power glued: `m2`, `cm3`, `km²`.
+const GLUED_POWER_UNITS: &[&str] = &["mm", "cm", "dm", "m", "km", "ft", "yd", "mi", "µm"];
+
+/// `m²` → `m^2`, `20 m2` → `20 m^2` (but `5m2s` stays 5 min 2 s).
+fn powers(input: &str) -> String {
+    let input = input.replace('²', "^2").replace('³', "^3");
+    let chars: Vec<char> = input.chars().collect();
+    let mut out = String::with_capacity(input.len() + 4);
+    let mut i = 0;
+    while i < chars.len() {
+        let starts_word = chars[i].is_alphabetic() && (i == 0 || !chars[i - 1].is_alphabetic());
+        if starts_word {
+            let end = (i..chars.len())
+                .find(|&k| !chars[k].is_alphabetic())
+                .unwrap_or(chars.len());
+            let word: String = chars[i..end].iter().collect();
+            out.push_str(&word);
+            let power = chars.get(end).is_some_and(|c| *c == '2' || *c == '3');
+            let alone = !chars.get(end + 1).is_some_and(|c| c.is_alphanumeric());
+            // Not inside a compound duration (`1h45m2`).
+            let digits = chars[..i]
+                .iter()
+                .rev()
+                .take_while(|c| c.is_ascii_digit())
+                .count();
+            let compound = digits > 0 && i > digits && chars[i - digits - 1].is_alphabetic();
+            if GLUED_POWER_UNITS.contains(&word.as_str()) && power && alone && !compound {
+                out.push('^');
+            }
+            i = end;
+        } else {
+            out.push(chars[i]);
+            i += 1;
+        }
+    }
+    out
+}
+
+/// A result in squared minutes or minutes times metres: the `m` of a
+/// reading taken for minutes (`5 m² + 3 m²` read as `5 min²…`). Never
+/// worth showing as another reading.
+fn odd_minutes(evaluated: &Evaluated) -> bool {
+    let Evaluated::Fend(Outcome::Value { text, .. }) = evaluated else {
+        return false;
+    };
+    let Some((_, unit)) = format::split_number(text) else {
+        return false;
+    };
+    let words: Vec<&str> = unit
+        .split([' ', '/', '*'])
+        .filter(|w| !w.is_empty())
+        .collect();
+    let minutes = |w: &str| w == "min" || w == "mins";
+    words
+        .iter()
+        .any(|w| w.starts_with("min^") || w.starts_with("mins^"))
+        || (words.len() > 1 && words.iter().any(|w| minutes(w)))
+}
+
+/// `10000 m^2` → `10000 m²` (powers of units only).
+fn superscripts(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    let mut previous = ' ';
+    while let Some(c) = chars.next() {
+        if c == '^' && previous.is_alphabetic() {
+            match chars.peek() {
+                Some('2') => {
+                    out.push('²');
+                    chars.next();
+                    previous = '²';
+                    continue;
+                }
+                Some('3') => {
+                    out.push('³');
+                    chars.next();
+                    previous = '³';
+                    continue;
+                }
+                _ => {}
+            }
+        }
+        out.push(c);
+        previous = c;
+    }
+    out
 }
 
 /// Words that make an input without digits a calculation.
@@ -286,6 +378,11 @@ impl Calculator {
             weekdays: vocabulary.weekday_names(),
             day: unit_names("day"),
             week: unit_names("week"),
+            month: unit_names("month"),
+            year: unit_names("year"),
+            hour: unit_names("hour"),
+            minute: unit_names("minute"),
+            second: unit_names("second"),
             next_day: settings.labels.next_day.clone(),
             previous_day: settings.labels.previous_day.clone(),
             local_time: settings.labels.local_time.clone(),
@@ -363,11 +460,26 @@ impl Calculator {
             rates: self.rates.clone(),
         };
         let deadline = &env;
+        let input = &powers(input);
         let tokens = token::tokenize(input, self.mode);
         let symbols = looks_like_calculation(input);
         // Without digits nor symbols, a calculation needs at least two words
-        // (`une heure en minutes`), never one (`firefox`).
-        if !symbols && tokens.len() < 2 {
+        // (`une heure en minutes`), never one (`firefox`), except a day or
+        // the time (`demain`, `now`).
+        if !symbols && tokens.len() > 1 {
+            // Checked below, on the words.
+        } else if !symbols && tokens.len() == 1 {
+            let segments = normalize::segments(&tokens, &self.vocabulary, &|_| false);
+            let alone = segments.iter().all(|s| {
+                s.candidates.iter().any(|c| {
+                    matches!(&c.sense, normalize::Sense::Lexicon(x)
+                        if matches!(x.as_str(), "now" | "today" | "tomorrow" | "yesterday"))
+                })
+            });
+            if !alone {
+                return None;
+            }
+        } else if !symbols {
             return None;
         }
         let segments = normalize::segments(&tokens, &self.vocabulary, &|w| self.is_unit(w));
@@ -381,7 +493,9 @@ impl Calculator {
             names: &self.names,
         };
         let mut valid: Vec<(Rendered, Evaluated)> = Vec::new();
-        let mut too_big = false;
+        // The error of the best reading that failed for a reason worth
+        // telling (`1/0`, `log(0)`, `10^10^10^10`).
+        let mut error: Option<Calculation> = None;
         for reading in normalize::readings(&segments) {
             if cancel.is_cancelled() {
                 return None;
@@ -406,12 +520,20 @@ impl Calculator {
             }
             match eval::evaluate(&fend, deadline) {
                 Ok(outcome) => valid.push((rendered, Evaluated::Fend(outcome))),
-                Err(EvalError::TooBig) => too_big = true,
+                Err(EvalError::TooBig) => {
+                    error.get_or_insert(Calculation::TooBig);
+                }
+                Err(EvalError::DivisionByZero) => {
+                    error.get_or_insert(Calculation::DivisionByZero);
+                }
+                Err(EvalError::Undefined) => {
+                    error.get_or_insert(Calculation::Undefined);
+                }
                 Err(EvalError::Invalid) => {}
             }
         }
         let Some((best, evaluated)) = valid.first() else {
-            return too_big.then_some(Calculation::TooBig);
+            return error;
         };
         if best.trivial {
             return None;
@@ -430,7 +552,12 @@ impl Calculator {
             }
         };
         // Other valid readings, with what they were read as.
-        for (rendered, evaluated) in valid.iter().skip(1).take(MAX_OTHER_READINGS) {
+        for (rendered, evaluated) in valid
+            .iter()
+            .skip(1)
+            .filter(|(_, e)| !odd_minutes(e))
+            .take(MAX_OTHER_READINGS)
+        {
             if rendered.trivial {
                 continue;
             }
@@ -509,6 +636,10 @@ impl Calculator {
                 read_as: None,
             });
         }
+        main.display = superscripts(&main.display);
+        for v in &mut variants {
+            v.display = superscripts(&v.display);
+        }
         (main, variants)
     }
 
@@ -576,9 +707,14 @@ impl Calculator {
             return None;
         }
         let p = &rendered.pieces;
-        let operations = p
-            .iter()
-            .any(|x| matches!(x, Piece::Op(o) if "+-*/".contains(o.as_str())));
+        // `5m2s`: a compound duration adds its parts.
+        let compound = p.windows(4).any(|w| {
+            matches!(w, [Piece::Num(_), Piece::Unit(a), Piece::Num(_), Piece::Unit(b)]
+                if TIME_RESULT_UNITS.contains(&a.as_str()) && TIME_RESULT_UNITS.contains(&b.as_str()))
+        });
+        let operations = compound
+            || p.iter()
+                .any(|x| matches!(x, Piece::Op(o) if "+-*/".contains(o.as_str())));
         if !(rendered.transfer || rendered.clock_target || (!rendered.converts && operations)) {
             return None;
         }
@@ -721,6 +857,8 @@ pub struct Texts {
     /// `lu comme : {}` / `read as: {}` (`%s` is replaced).
     pub read_as: String,
     pub too_big: String,
+    pub division_by_zero: String,
+    pub undefined: String,
     /// `%s est premier` / `%s is prime`.
     pub prime: String,
     /// `%s n'est pas premier` / `%s is not prime`.
@@ -732,6 +870,8 @@ impl Texts {
         Self {
             read_as: i18n.t_args("calc-read-as", &[("reading", "%s")]),
             too_big: i18n.t("calc-too-big"),
+            division_by_zero: i18n.t("calc-division-by-zero"),
+            undefined: i18n.t("calc-undefined"),
             prime: i18n.t_args("calc-prime", &[("n", "%s")]),
             not_prime: i18n.t_args("calc-not-prime", &[("n", "%s")]),
         }
@@ -863,9 +1003,16 @@ impl Provider for CalcProvider {
         let input = q.text.as_str();
         match calculator.calculate(input, cancel) {
             None => Vec::new(),
-            Some(Calculation::TooBig) => vec![ResultItem {
+            Some(
+                error
+                @ (Calculation::TooBig | Calculation::DivisionByZero | Calculation::Undefined),
+            ) => vec![ResultItem {
                 id: MAIN_ID.into(),
-                title: texts.too_big,
+                title: match error {
+                    Calculation::TooBig => texts.too_big,
+                    Calculation::DivisionByZero => texts.division_by_zero,
+                    _ => texts.undefined,
+                },
                 subtitle: Some(input.to_owned()),
                 icon: IconSource::Builtin(BuiltinIcon::Calculator),
                 score: SCORE,
